@@ -130,79 +130,104 @@ void WriteDefines(List<DefineItem> defines)
 
     writer.WriteLine("{");
 
-    foreach (var define in defines)
+    // dear_bindings writes defines in a strange manner, producing redefines, so when we group them by count, we can produce more accurate result
+    var defineGroups = defines.GroupBy(x => x.Conditionals?.Count ?? 0);
+
+    foreach (var group in defineGroups)
     {
-        if (define.Conditionals is {Count: > 0})
+        if (group.Key == 0)
         {
-            Console.WriteLine(FlattenConditionals(define.Conditionals));
-            if (EvalConditionals(define.Conditionals))
+            foreach (var define in group)
             {
+                WriteSingleDefine(define, writer);
+                writer.WriteLine();
                 knownDefines[define.Name] = define.Content ?? "";
-                Console.WriteLine($"Added conditional define {define.Name} with value: {define.Content}");
             }
-            else
+        }
+        else if (group.Key == 1)
+        {
+            foreach (var define in group)
             {
-                Console.WriteLine($"Skipped conditional define {define.Name} with value: {define.Content}");
+                var condition = EvalConditionals(define.Conditionals);
+                if (condition)
+                {
+                    WriteSingleDefine(define, writer);
+                    writer.WriteLine();
+                    knownDefines[define.Name] = define.Content ?? "";
+                }
+                else
+                {
+                    Console.WriteLine($"Skipped define {define.Name} because it's covered with false conditional");
+                }
             }
         }
         else
         {
-            knownDefines[define.Name] = define.Content ?? "";
-            Console.WriteLine($"Added unconditional define {define.Name} with value: {define.Content}");
-        }
-
-        Console.WriteLine();
-    }
-
-    foreach (var define in defines)
-    {
-        if (!knownDefines.ContainsKey(define.Name))
-        {
-            Console.WriteLine($"Skipping define: {define.Name} because it's unknown");
-            continue;
-        }
-
-        if (string.IsNullOrEmpty(define.Content))
-        {
-            // this is a bool
-            writer.WriteLine($"\tpublic const bool {define.Name} = true;");
-        }
-        else if (knownDefines.ContainsKey(define.Content))
-        {
-            writer.WriteLine($"\tpublic const bool {define.Name} = {define.Content};");
-        }
-        else if (define.Content.StartsWith("0x") &&
-                 long.TryParse(
-                     define.Content.Substring(2),
-                     NumberStyles.HexNumber,
-                     NumberFormatInfo.InvariantInfo,
-                     out var parsed
-                 ) ||
-                 long.TryParse(define.Content, out parsed)
-                )
-        {
-            // this is a number
-            writer.WriteLine($"\t/// <summary>");
-            writer.WriteLine($"\t/// Original value: {define.Content}");
-            writer.WriteLine($"\t/// </summary>");
-            writer.WriteLine($"\tpublic const long {define.Name} = {parsed};");
-        }
-        else if (define.Content.StartsWith('\"') && define.Content.EndsWith('\"'))
-        {
-            // this is a string
-            writer.WriteLine($"\t/// <summary>");
-            writer.WriteLine($"\t/// Original value: {define.Content}");
-            writer.WriteLine($"\t/// </summary>");
-            writer.WriteLine($"\tpublic const string {define.Name} = {define.Content};");
-        }
-        else
-        {
-            writer.WriteLine($"\t// public const string {define.Name} = {define.Content};");
-            Console.WriteLine($"Unknown define type: {define.Content}");
+            Dictionary<string, string> newDefines = new();
+            foreach (var define in group)
+            {
+                var condition = EvalConditionals(define.Conditionals.Skip(group.Key - 1).ToList());
+                if (condition)
+                {
+                    WriteSingleDefine(define, writer);
+                    writer.WriteLine();
+                    newDefines[define.Name] = define.Content ?? "";
+                }
+                else
+                {
+                    Console.WriteLine($"Skipped define {define.Name} because it's covered with false conditional");
+                }
+            }
+            foreach (var (key, value) in newDefines)
+            {
+                knownDefines[key] = value;
+            }
         }
     }
 
     writer.WriteLine("}");
+}
+
+void WriteSingleDefine(DefineItem defineItem, StreamWriter streamWriter)
+{
+    if (string.IsNullOrEmpty(defineItem.Content))
+    {
+        // this is a bool
+        streamWriter.WriteLine($"\tpublic const bool {defineItem.Name} = true;");
+    }
+    else if (knownDefines.ContainsKey(defineItem.Content))
+    {
+        streamWriter.WriteLine($"\tpublic const bool {defineItem.Name} = {defineItem.Content};");
+    }
+    else if (defineItem.Content.StartsWith("0x") &&
+             long.TryParse(
+                 defineItem.Content.Substring(2),
+                 NumberStyles.HexNumber,
+                 NumberFormatInfo.InvariantInfo,
+                 out var parsed
+             ) ||
+             long.TryParse(defineItem.Content, out parsed)
+            )
+    {
+        // this is a number
+        streamWriter.WriteLine($"\t/// <summary>");
+        streamWriter.WriteLine($"\t/// Original value: {defineItem.Content}");
+        streamWriter.WriteLine($"\t/// </summary>");
+        streamWriter.WriteLine($"\tpublic const long {defineItem.Name} = {parsed};");
+    }
+    else if (defineItem.Content.StartsWith('\"') && defineItem.Content.EndsWith('\"'))
+    {
+        // this is a string
+        streamWriter.WriteLine($"\t/// <summary>");
+        streamWriter.WriteLine($"\t/// Original value: {defineItem.Content}");
+        streamWriter.WriteLine($"\t/// </summary>");
+        streamWriter.WriteLine($"\tpublic const string {defineItem.Name} = {defineItem.Content};");
+    }
+    else
+    {
+        streamWriter.WriteLine($"\t// public const string {defineItem.Name} = {defineItem.Content};");
+        Console.WriteLine($"Unknown define type: {defineItem.Content}");
+    }
 }
 
 void WriteEnums(List<EnumItem> enums)
@@ -273,24 +298,6 @@ void WriteEnums(List<EnumItem> enums)
 
         writer.WriteLine("}");
         writer.WriteLine();
-    }
-
-    string ConvertAttachedToSummary(string comment, string prefix = "")
-    {
-        if (comment == "")
-        {
-            return "";
-        }
-
-        var modified = comment.StartsWith("// ")
-            ? comment[3..]
-            : comment.StartsWith("//")
-                ? comment[2..]
-                : comment;
-
-        return $"{prefix}/// <summary>\n" +
-               $"{prefix}/// {modified}\n" +
-               $"{prefix}/// </summary>";
     }
 }
 
@@ -417,7 +424,16 @@ void WriteStructs(List<StructItem> structs)
 
     foreach (var structItem in structs)
     {
-        var requireConstructor = false;
+        if (structItem.Comments is not null)
+        {
+            if (structItem.Comments.Attached is not null)
+            {
+                var summary = ConvertAttachedToSummary(structItem.Comments.Attached, "\t");
+
+                writer.WriteLine(summary);
+            }
+        }
+        
         writer.WriteLine($"\tpublic struct {structItem.Name}");
         writer.WriteLine("\t{");
         foreach (var field in structItem.Fields)
@@ -427,7 +443,17 @@ void WriteStructs(List<StructItem> structs)
                 Console.WriteLine($"Skipped field {field.Name} of {structItem.Name} because it's covered with falsy conditional");
                 continue;
             }
-            
+
+            if (field.Comments is not null)
+            {
+                if (field.Comments.Attached is not null)
+                {
+                    var summary = ConvertAttachedToSummary(field.Comments.Attached, "\t\t");
+
+                    writer.WriteLine(summary);
+                }
+            }
+
             if (field.IsArray)
             {
                 var type = field.Type.Description.InnerType.Kind == "Builtin"
@@ -441,10 +467,8 @@ void WriteStructs(List<StructItem> structs)
                 else
                 {
                     writer.WriteLine($"\t\tpublic unsafe fixed {type} {field.Name}[{field.ArrayBounds}];");
-                    Console.WriteLine($"Unknown type {type} of field {field.Name} in {structItem.Name}");
+                    Console.WriteLine($"Unknown type {type} of array field {field.Name} in {structItem.Name}");
                 }
-
-                requireConstructor = true;
             }
             else if (field.Type.Description.Kind == "Pointer")
             {
@@ -474,7 +498,7 @@ void WriteStructs(List<StructItem> structs)
                 else
                 {
                     writer.WriteLine($"\t\tpublic unsafe {type}* {field.Name};");
-                    Console.WriteLine($"Unknown type {type} of field {field.Name} in {structItem.Name}");
+                    Console.WriteLine($"Unknown type {type} of pointer field {field.Name} in {structItem.Name}");
                 }
             }
             else
@@ -487,16 +511,10 @@ void WriteStructs(List<StructItem> structs)
                 else
                 {
                     writer.WriteLine($"\t\tpublic {type} {field.Name};");
-                    Console.WriteLine($"Unknown type {type} of field {field.Name} in {structItem.Name}");
+                    Console.WriteLine($"Unknown type {type} of normal field {field.Name} in {structItem.Name}");
                 }
             }
-        }
-
-        if (requireConstructor)
-        {
-            writer.WriteLine($"\t\tpublic {structItem.Name}()");
-            writer.WriteLine("\t\t{");
-            writer.WriteLine("\t\t}");
+            writer.WriteLine();
         }
 
         knownConversions[structItem.Name] = structItem.Name;
@@ -506,6 +524,24 @@ void WriteStructs(List<StructItem> structs)
     }
 
     writer.WriteLine("}");
+}
+
+string ConvertAttachedToSummary(string comment, string prefix = "")
+{
+    if (comment == "")
+    {
+        return "";
+    }
+
+    var modified = comment.StartsWith("// ")
+        ? comment[3..]
+        : comment.StartsWith("//")
+            ? comment[2..]
+            : comment;
+    var escaped = new System.Xml.Linq.XText(modified).ToString();
+    return $"{prefix}/// <summary>\n" +
+           $"{prefix}/// {escaped}\n" +
+           $"{prefix}/// </summary>";
 }
 
 record Definitions(
@@ -529,7 +565,7 @@ record StructItem(
     bool ForwardDeclaration,
     bool IsAnonymous,
     List<StructItemField> Fields,
-    Comments Comments,
+    Comments? Comments,
     bool IsInternal
 );
 
@@ -538,6 +574,7 @@ record StructItemField(
     bool IsArray,
     bool IsAnonymous,
     string? ArrayBounds,
+    Comments? Comments,
     StructItemFieldType Type,
     List<ConditionalItem> Conditionals,
     bool IsInternal
@@ -607,7 +644,7 @@ record EnumElement(
     List<ConditionalItem> Conditionals
 );
 
-record Comments(string Attached, string[]? Preceding);
+record Comments(string? Attached, string[]? Preceding);
 
 record ConditionalItem(
     string Condition,
