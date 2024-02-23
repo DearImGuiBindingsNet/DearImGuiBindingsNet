@@ -583,94 +583,55 @@ void WriteStructs(List<StructItem> structs)
 
     foreach (var structItem in structs)
     {
-        if (structItem.Comments is not null)
+        if (structItem.Comments?.Attached is not null)
         {
-            if (structItem.Comments.Attached is not null)
-            {
-                var summary = ConvertAttachedToSummary(structItem.Comments.Attached, "\t");
+            var summary = ConvertAttachedToSummary(structItem.Comments.Attached, "\t");
 
-                writer.WriteLine(summary);
-            }
+            writer.WriteLine(summary);
         }
 
         writer.WriteLine($"\tpublic struct {structItem.Name}");
         writer.WriteLine("\t{");
         foreach (var field in structItem.Fields)
         {
-            if (field.Conditionals is {Count: > 0} && !EvalConditionals(field.Conditionals))
+            if (!EvalConditionals(field.Conditionals))
             {
                 Console.WriteLine($"Skipped field {field.Name} of {structItem.Name} because it's covered with falsy conditional");
                 continue;
             }
 
-            if (field.Comments is not null)
+            if (field.Comments?.Attached is not null)
             {
-                if (field.Comments.Attached is not null)
-                {
-                    var summary = ConvertAttachedToSummary(field.Comments.Attached, "\t\t");
+                var summary = ConvertAttachedToSummary(field.Comments.Attached, "\t\t");
 
-                    writer.WriteLine(summary);
-                }
+                writer.WriteLine(summary);
             }
+
+            var fieldType = field.Type.Description;
 
             if (field.IsArray)
             {
-                var type = field.Type.Description.InnerType.Kind == "Builtin"
-                    ? field.Type.Description.InnerType.BuiltinType
-                    : field.Type.Description.InnerType.Name;
-
-                if (knownTypeConversions.TryGetValue(type, out var knownType))
+                fieldType = fieldType.InnerType;
+                if (TryGetTypeConversionFromDescription(fieldType, out var matchedType))
                 {
-                    writer.WriteLine($"\t\tpublic unsafe fixed {knownType} {field.Name}[{field.ArrayBounds}];");
+                    writer.WriteLine($"\t\tpublic unsafe fixed {matchedType} {field.Name}[{field.ArrayBounds}];");
                 }
                 else
                 {
-                    writer.WriteLine($"\t\tpublic unsafe fixed {type} {field.Name}[{field.ArrayBounds}];");
-                    Console.WriteLine($"Unknown type {type} of array field {field.Name} in {structItem.Name}");
-                }
-            }
-            else if (field.Type.Description.Kind == "Pointer")
-            {
-                var innerType = field.Type.Description.InnerType;
-                var type = "";
-                if (innerType.Kind == "Builtin")
-                {
-                    type = innerType.BuiltinType;
-                }
-                else if (innerType.Kind == "User")
-                {
-                    type = innerType.Name;
-                }
-                else if (innerType.Kind == "Pointer")
-                {
-                    type = innerType.InnerType.Kind == "Builtin"
-                        ? innerType.InnerType.BuiltinType
-                        : innerType.InnerType.Name;
-
-                    type += "*";
-                }
-
-                if (knownTypeConversions.TryGetValue(type, out var knownType))
-                {
-                    writer.WriteLine($"\t\tpublic unsafe {knownType}* {field.Name};");
-                }
-                else
-                {
-                    writer.WriteLine($"\t\tpublic unsafe {type}* {field.Name};");
-                    Console.WriteLine($"Unknown type {type} of pointer field {field.Name} in {structItem.Name}");
+                    writer.WriteLine($"\t\tpublic unsafe fixed {field.Type.Declaration} {field.Name};");
+                    Console.WriteLine($"Unknown type {field.Type.Declaration} of array field {field.Name} in {structItem.Name}");
                 }
             }
             else
             {
-                var type = field.Type.Declaration;
-                if (knownTypeConversions.TryGetValue(type, out var knownType))
+                if (TryGetTypeConversionFromDescription(fieldType, out var matchedType))
                 {
-                    writer.WriteLine($"\t\tpublic {knownType} {field.Name};");
+                    writer.WriteLine($"\t\tpublic {(matchedType.EndsWith('*') ? "unsafe " : "")}{matchedType} {field.Name};");
                 }
                 else
                 {
-                    writer.WriteLine($"\t\tpublic {type} {field.Name};");
-                    Console.WriteLine($"Unknown type {type} of normal field {field.Name} in {structItem.Name}");
+                    writer.WriteLine($"\t\t// {field.Type.Declaration}");
+                    Console.WriteLine($"Failed to determine type of field {field.Name} of {structItem.Name}");
                 }
             }
 
