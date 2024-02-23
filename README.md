@@ -6,9 +6,9 @@ Uses [dear_bindings](https://github.com/dearimgui/dear_bindings)
 
 - Compiles cimgui in Docker
 - Generates definitions in Docker
-- Generates C# Enums, Enum constants, Typedefs.
+- Generates C# Enums, Enum constants, Typedefs (functions only), Defines.
 
-InProgress: Defines, Delegates, Functions, Structs
+InProgress: Structs (mostly done, except function pointers), Delegates, Functions
 
 # Building
 

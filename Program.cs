@@ -381,7 +381,7 @@ void WriteTypedefs2(List<TypedefItem> typedefs)
         }
 
         string? summary = null;
-        
+
         if (typedef.Comments?.Attached is not null)
         {
             summary = ConvertAttachedToSummary(typedef.Comments.Attached, "\t");
@@ -389,7 +389,12 @@ void WriteTypedefs2(List<TypedefItem> typedefs)
 
         var typeDescription = typedef.Type.Description;
 
-        SaveTypeConversion(writer, typeDescription, typedef.Name, summary);
+        SaveTypeConversion(
+            writer,
+            typeDescription,
+            typedef.Name,
+            summary
+        );
     }
 
     writer.WriteLine("}");
@@ -466,7 +471,7 @@ void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, st
                 innerType = innerType.InnerType!;
 
                 var delegateCode = UnwrapFunctionTypeDescriptionToDelegate(innerType, name);
-                
+
                 writer.WriteLine(summary);
                 writer.WriteLine("\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]");
                 writer.WriteLine($"\tpublic unsafe {delegateCode};");
@@ -477,7 +482,7 @@ void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, st
             {
                 Console.WriteLine($"Unknown Type typedef {typeDescription.Name}");
             }
-            
+
             break;
         }
         default:
@@ -494,7 +499,7 @@ string UnwrapFunctionTypeDescriptionToDelegate(TypeDescription description, stri
     {
         returnType = "unknown";
     }
-    
+
     List<string> parameters = new();
     foreach (var parameter in description.Parameters!)
     {
@@ -508,7 +513,7 @@ string UnwrapFunctionTypeDescriptionToDelegate(TypeDescription description, stri
         {
             Console.WriteLine($"Function parameter {parameter.Name} was not of kind Type. Was {parameter.Kind}");
         }
-        
+
         if (!TryGetTypeConversionFromDescription(argumentType!, out var matchedArgumentType))
         {
             matchedArgumentType = "unknown";
@@ -516,8 +521,8 @@ string UnwrapFunctionTypeDescriptionToDelegate(TypeDescription description, stri
 
         parameters.Add($"{matchedArgumentType} {argumentName}");
     }
-    
-    return $"delegate {returnType} {name} ({string.Join(", ", parameters)})";
+
+    return $"delegate {returnType} {name}({string.Join(", ", parameters)})";
 }
 
 bool TryGetTypeConversionFromDescription(TypeDescription description, out string matchedType)
@@ -611,15 +616,52 @@ void WriteStructs(List<StructItem> structs)
 
             if (field.IsArray)
             {
-                fieldType = fieldType.InnerType;
-                if (TryGetTypeConversionFromDescription(fieldType, out var matchedType))
+                fieldType = fieldType.InnerType!;
+                if (fieldType.Kind == "Builtin")
                 {
-                    writer.WriteLine($"\t\tpublic unsafe fixed {matchedType} {field.Name}[{field.ArrayBounds}];");
+                    if (TryGetTypeConversionFromDescription(fieldType, out var matchedType))
+                    {
+                        writer.WriteLine($"\t\tpublic unsafe fixed {matchedType} {field.Name}[{field.ArrayBounds}];");
+                    }
+                    else
+                    {
+                        writer.WriteLine($"\t\tpublic unsafe fixed {field.Type.Declaration} {field.Name};");
+                        Console.WriteLine($"Unknown Builtin type {field.Type.Declaration} of array field {field.Name} in {structItem.Name}");
+                    }
                 }
-                else
+                else if (fieldType.Kind == "User")
                 {
-                    writer.WriteLine($"\t\tpublic unsafe fixed {field.Type.Declaration} {field.Name};");
-                    Console.WriteLine($"Unknown type {field.Type.Declaration} of array field {field.Name} in {structItem.Name}");
+                    // for user types we need to emit something like this
+                    // [System.Runtime.CompilerServices.InlineArray(ImGuiKey_KeysData_SIZE)]
+                    // public struct KeysDataInlineArray
+                    // {
+                    //      ImGuiKeyData Element;
+                    // }
+
+                    if (TryGetTypeConversionFromDescription(fieldType, out var matchedType))
+                    {
+                        var inlineArrayTypeName = $"{field.Name}InlineArray";
+                        var bound = field.ArrayBounds!;
+
+                        if (!long.TryParse(bound, out _))
+                        {
+                            // if it's not a number - then it's a constant (we store constants as long, but InlineArray expects int)
+                            bound = $"(int){bound}";
+                        }
+
+                        writer.WriteLine($"\t\tpublic {inlineArrayTypeName} {field.Name};");
+                        writer.WriteLine();
+
+                        writer.WriteLine($"\t\t[System.Runtime.CompilerServices.InlineArray({bound})]");
+                        writer.WriteLine($"\t\tpublic struct {inlineArrayTypeName}");
+                        writer.WriteLine("\t\t{");
+                        writer.WriteLine($"\t\t\tpublic {matchedType} Element;");
+                        writer.WriteLine("\t\t}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Failed to determine User type for InlineArray {field.Name} of {structItem.Name}");
+                    }
                 }
             }
             else
