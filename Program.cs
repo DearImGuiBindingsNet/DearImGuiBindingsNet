@@ -1,6 +1,9 @@
 ﻿using System.Globalization;
 using System.Text.Json;
 
+// var context = TestImGuiNative.ImGui_CreateContext();
+// TestImGuiNative.ImGui_SetCurrentContext(context);
+
 Dictionary<string, string> knownDefines = new()
 {
     ["IMGUI_IMPL_API"] = "extern \"C\" __declspec(dllexport)",
@@ -24,16 +27,18 @@ if (!dirInfo.Exists)
     dirInfo.Create();
 }
 
-Dictionary<string, string> knownConversions = new()
+Dictionary<string, string> knownTypeConversions = new()
 {
     ["int"] = "int",
     ["unsigned int"] = "uint",
     ["unsigned char"] = "byte",
     ["unsigned_char"] = "byte",
     ["unsigned_int"] = "uint",
+    ["unsigned_short"] = "ushort",
     ["long long"] = "long",
+    ["long_long"] = "long",
+    ["unsigned_long_long"] = "ulong",
     ["short"] = "short",
-    ["void*"] = "System.IntPtr",
     ["signed char"] = "char",
     ["signed short"] = "short",
     ["signed int"] = "int",
@@ -46,6 +51,8 @@ Dictionary<string, string> knownConversions = new()
     ["double"] = "double",
     ["void"] = "void",
 };
+
+Dictionary<string, string> customTypeConversions = new();
 
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing Defines");
@@ -393,21 +400,108 @@ void WriteTypedefs(List<TypedefItem> typedefs)
         }
 
         var declType = typedef.Type.Declaration;
+        var typeDescription = typedef.Type.Description;
 
-        if (!knownConversions.TryGetValue(declType, out var matchedType))
+        var (csharpType, type) = GetCSharpTypeOfCppTypeDescription(typeDescription);
+
+        switch (type)
         {
-            Console.WriteLine($"Unknown matching type: {declType}");
+            case "Builtin":
+            {
+                writer.WriteLine($"global using {typedef.Name} = {csharpType}; // Original Type: {declType}");
+                break;
+            }
+            case "Normal":
+            {
+                writer.WriteLine($"global using {typedef.Name} = {csharpType}; // Original Type: {declType}");
+                knownTypeConversions[typedef.Name] = csharpType;
+                break;
+            }
+            case "UserDefine":
+            {
+                writer.WriteLine($"global using {typedef.Name} = {csharpType}; // Original Type: {declType}");
+                customTypeConversions[typedef.Name] = csharpType;
+                break;
+            }
+            case "Pointer":
+            {
+                writer.WriteLine($"global using unsafe {typedef.Name} = {csharpType}; // Original Type: {declType}");
+                break;
+            }
+            case "Function":
+            {
+                writer.WriteLine($"{csharpType}; // Original Type: {declType}");
+                break;
+            }
+            case "Unknown":
+            {
+                writer.WriteLine($"global using unsafe {typedef.Name} = {csharpType}; // Original Type: {declType}");
+                break;
+            }
+        }
+        
+        if (index != typedefs.Count - 1)
+        {
+            writer.WriteLine();
+        }
+    }
+}
+
+(string Type, string Kind) GetCSharpTypeOfCppTypeDescription(TypeDescription description, string? typeName = null)
+{
+    if (description.Kind == "Builtin")
+    {
+        if (knownTypeConversions.TryGetValue(description.BuiltinType!, out var matchedType))
+        {
+            return (matchedType, "Normal");
         }
         else
         {
-            writer.WriteLine($"global using {typedef.Name} = {matchedType}; // Original Type: {declType}");
-            knownConversions[typedef.Name] = matchedType;
-
-            if (index != typedefs.Count - 1)
-            {
-                writer.WriteLine();
-            }
+            return (description.BuiltinType!, "Normal");
         }
+    }
+    else if (description.Kind == "User")
+    {
+        if (customTypeConversions.TryGetValue(description.Name!, out var type))
+        {
+            return (type, "Normal");
+        }
+        else
+        {
+            return (description.Name!, "UserDefine");
+        }
+    }
+    else if (description.Kind == "Pointer")
+    {
+        var (innerType, innerKind) = GetCSharpTypeOfCppTypeDescription(description.InnerType!, typeName);
+        if (innerKind == "Function")
+        {
+            return (innerType, innerKind);
+        }
+        return ($"{innerType}*", "Pointer");
+    }
+    else if (description.Kind == "Function")
+    {
+        var (returnType, returnKind) = GetCSharpTypeOfCppTypeDescription(description.ReturnType!, typeName);
+
+        List<string> parameters = new();
+        foreach (var parameter in description.Parameters!)
+        {
+            var name = parameter.Name;
+            var (paramType, kind) = GetCSharpTypeOfCppTypeDescription(parameter.InnerType!, typeName);
+            
+            parameters.Add($"{paramType} {name}");
+        }
+
+        return ($"delegate {returnType} {typeName}({string.Join(", ", parameters)})", "Function");
+    }
+    else if (description.Kind == "Type")
+    {
+        return GetCSharpTypeOfCppTypeDescription(description.InnerType!, description.Name);
+    }
+    else
+    {
+        return ("", "Unknown");
     }
 }
 
@@ -460,7 +554,7 @@ void WriteStructs(List<StructItem> structs)
                     ? field.Type.Description.InnerType.BuiltinType
                     : field.Type.Description.InnerType.Name;
 
-                if (knownConversions.TryGetValue(type, out var knownType))
+                if (knownTypeConversions.TryGetValue(type, out var knownType))
                 {
                     writer.WriteLine($"\t\tpublic unsafe fixed {knownType} {field.Name}[{field.ArrayBounds}];");
                 }
@@ -491,7 +585,7 @@ void WriteStructs(List<StructItem> structs)
                     type += "*";
                 }
 
-                if (knownConversions.TryGetValue(type, out var knownType))
+                if (knownTypeConversions.TryGetValue(type, out var knownType))
                 {
                     writer.WriteLine($"\t\tpublic unsafe {knownType}* {field.Name};");
                 }
@@ -504,7 +598,7 @@ void WriteStructs(List<StructItem> structs)
             else
             {
                 var type = field.Type.Declaration;
-                if (knownConversions.TryGetValue(type, out var knownType))
+                if (knownTypeConversions.TryGetValue(type, out var knownType))
                 {
                     writer.WriteLine($"\t\tpublic {knownType} {field.Name};");
                 }
@@ -517,7 +611,7 @@ void WriteStructs(List<StructItem> structs)
             writer.WriteLine();
         }
 
-        knownConversions[structItem.Name] = structItem.Name;
+        knownTypeConversions[structItem.Name] = structItem.Name;
 
         writer.WriteLine("\t}");
         writer.WriteLine();
@@ -554,7 +648,7 @@ record Definitions(
 record DefineItem(
     string Name,
     string? Content,
-    List<ConditionalItem> Conditionals
+    List<ConditionalItem>? Conditionals
 );
 
 record StructItem(
@@ -582,20 +676,16 @@ record StructItemField(
 
 record StructItemFieldType(
     string Declaration,
-    StructItemFieldTypeDescription Description
+    TypeDescription Description
 );
 
-record StructItemFieldTypeDescription(
-    string Kind,
-    string BuiltinType,
-    StructItemFieldTypeDescriptionInnerType InnerType
-);
-
-record StructItemFieldTypeDescriptionInnerType(
+record TypeDescription(
     string Kind,
     string? Name,
     string? BuiltinType,
-    StructItemFieldTypeDescriptionInnerType? InnerType
+    TypeDescription? ReturnType,
+    TypeDescription? InnerType,
+    List<TypeDescription>? Parameters
 );
 
 record TypedefItem(
@@ -606,7 +696,7 @@ record TypedefItem(
 
 record TypedefType(
     string Declaration,
-    TypedefTypeDescription Description,
+    TypeDescription Description,
     TypedefTypeDetails TypeDetails
 );
 

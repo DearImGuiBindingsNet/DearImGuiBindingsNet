@@ -80,4 +80,4 @@ COPY --from=generator /dear_bindings/cimgui.cpp /final/cimgui.cpp
 
 RUN echo "Success"
 
-CMD ["/bin/cp", "-r", "/final", "/cimgui_build/"]
+CMD ["/bin/cp", "-r", "/final/.", "/cimgui_build"]
