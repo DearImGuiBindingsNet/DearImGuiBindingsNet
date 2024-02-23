@@ -1,8 +1,33 @@
 ﻿using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using DearImGuiBindings;
 
-// var context = TestImGuiNative.ImGui_CreateContext();
-// TestImGuiNative.ImGui_SetCurrentContext(context);
+// -------
+// sample
+// -------
+// unsafe
+// {
+//     var context = ImGuiNative.ImGui_CreateContext(null);
+//     
+//     ImGuiNative.ImGui_SetCurrentContext(context);
+//
+//     var io = ImGuiNative.ImGui_GetIO();
+//     
+//     ref var ds = ref Unsafe.AsRef<ImGuiNative.ImVec2>(&io->DisplaySize);
+//     
+//     ds.x = 600;
+//     ds.y = 1200;
+//
+//     ImGuiNative.ImGui_NewFrame();
+//     var testRef = "test".AsSpan().GetPinnableReference();
+//
+//     var ptr = (char*)Unsafe.AsPointer(ref testRef);
+//     bool p_open = false;
+//     ImGuiNative.ImGui_Begin(ptr, &p_open, 0);
+// }
+//
+// return;
 
 const string genNamespace = "DearImGuiBindings";
 const string nativeClass = "ImGuiNative";
@@ -54,6 +79,7 @@ Dictionary<string, string> knownTypeConversions = new()
     ["char"] = "char",
     ["double"] = "double",
     ["void"] = "void",
+    ["va_list"] = "System.IntPtr",
     ["size_t"] = "ulong" // assume only x64 for now
 };
 
@@ -81,6 +107,10 @@ Console.WriteLine("---------------------");
 Console.WriteLine("Writing Structs");
 Console.WriteLine("---------------------");
 WriteStructs(definitions.Structs);
+Console.WriteLine("---------------------");
+Console.WriteLine("Writing Functions");
+Console.WriteLine("---------------------");
+WriteFunctions(definitions.Functions);
 
 Console.WriteLine("---------------------");
 Console.WriteLine("Done");
@@ -95,7 +125,9 @@ bool EvalConditionals(List<ConditionalItem>? conditionals)
         {
             var condition = conditionals[0];
             return ((condition.Condition == "ifdef" && knownDefines.ContainsKey(condition.Expression)) ||
-                    (condition.Condition == "ifndef" && !knownDefines.ContainsKey(condition.Expression)));
+                    (condition.Condition == "ifndef" && !knownDefines.ContainsKey(condition.Expression)) ||
+                    (condition.Condition == "if" && condition.Expression.StartsWith("defined") && !condition.Expression.StartsWith("&&") && 
+                     knownDefines.ContainsKey(condition.Expression.Substring(8, condition.Expression.Length - 8 - 1))));
         }
         else
         {
@@ -579,6 +611,7 @@ void WriteStructs(List<StructItem> structs)
 {
     using var writer = new StreamWriter("generated/ImGui.Structs.cs");
 
+    writer.WriteLine("using System.Runtime.InteropServices;");
     writer.WriteLine($"namespace {genNamespace};");
     writer.WriteLine();
 
@@ -610,6 +643,12 @@ void WriteStructs(List<StructItem> structs)
                 var summary = ConvertAttachedToSummary(field.Comments.Attached, "\t\t");
 
                 writer.WriteLine(summary);
+            }
+
+            if (field.Comments?.Preceding is not null)
+            {
+                var remarks = ConvertPrecedingToRemarks(field.Comments.Preceding, "\t\t");
+                writer.WriteLine(remarks);
             }
 
             var fieldType = field.Type.Description;
@@ -664,6 +703,35 @@ void WriteStructs(List<StructItem> structs)
                     }
                 }
             }
+            else if (fieldType.Kind == "Type")
+            {
+                // this is most possibly a delegate
+                var innerType = fieldType.InnerType!;
+
+                var name = fieldType.Name;
+
+                if (innerType.Kind == "Pointer" && innerType.InnerType!.Kind == "Function")
+                {
+                    // in case of a pointer to a function
+                    // we have to gen a [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+                    innerType = innerType.InnerType!;
+
+                    var delegateCode = UnwrapFunctionTypeDescriptionToDelegate(innerType, name + "Delegate");
+
+                    writer.WriteLine($"\t\tpublic {name + "Delegate"} {name};");
+                    writer.WriteLine();
+
+                    writer.WriteLine("\t\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]");
+                    writer.WriteLine($"\t\tpublic unsafe {delegateCode};");
+
+                    Console.WriteLine($"Written delegate for {field.Name} of {structItem.Name}");
+                    Console.WriteLine($"{delegateCode}");
+                }
+                else
+                {
+                    Console.WriteLine($"Unknown Type field {field.Name} of {structItem.Name}");
+                }
+            }
             else
             {
                 if (TryGetTypeConversionFromDescription(fieldType, out var matchedType))
@@ -689,6 +757,158 @@ void WriteStructs(List<StructItem> structs)
     writer.WriteLine("}");
 }
 
+void WriteFunctions(List<FunctionItem> functions)
+{
+    using var writer = new StreamWriter("generated/ImGui.Functions.cs");
+
+    writer.WriteLine("using System.Runtime.InteropServices;");
+    writer.WriteLine($"namespace {genNamespace};");
+    writer.WriteLine();
+
+    writer.WriteLine($"public static partial class {nativeClass}");
+
+    writer.WriteLine("{");
+
+    foreach (var functionItem in functions)
+    {
+        if (!EvalConditionals(functionItem.Conditionals))
+        {
+            Console.WriteLine($"Skipped function {functionItem.Name} because it has falsy conditional");
+            continue;
+        }
+
+        var functionName = functionItem.Name;
+
+        bool requiresUnsafe = false;
+
+        string returnType = functionItem.ReturnType!.Declaration;
+
+        if (TryGetTypeConversionFromDescription(functionItem.ReturnType!.Description, out var matchedType))
+        {
+            returnType = matchedType;
+        }
+        else
+        {
+            Console.WriteLine($"Failed to get type conversion for return_type: {returnType}");
+        }
+
+        if (functionItem.ReturnType!.Description.Kind == "Pointer")
+        {
+            requiresUnsafe = true;
+        }
+
+        List<string> parameters = new();
+        foreach (var parameter in functionItem.Arguments!)
+        {
+            var argumentName = parameter.Name;
+
+            if (IsKnownCSharpKeyword(argumentName))
+            {
+                argumentName = $"_{argumentName}";
+            }
+
+            if (parameter.Type is null)
+            {
+                Console.WriteLine($"Ignored parameter: {parameter.Name} of {functionItem.Name}, because it has no type.");
+                continue;
+            }
+
+            var argumentType = parameter.Type!.Description;
+
+            if (argumentType.Kind == "Pointer")
+            {
+                requiresUnsafe = true;
+            }
+
+            string finalArgumentType;
+
+            if (argumentType.Kind == "Array")
+            {
+                if (!TryGetTypeConversionFromDescription(argumentType.InnerType, out finalArgumentType))
+                {
+                    Console.WriteLine($"Failed to get type conversion for Array argument: {parameter.Type.Declaration}");
+                    finalArgumentType = "unknown";
+                }
+                else
+                {
+                    finalArgumentType = finalArgumentType + "*";
+                }
+            }
+            else if (argumentType.Kind == "Type")
+            {
+                // this is most possibly a delegate
+                var innerType = argumentType.InnerType!;
+
+                if (innerType.Kind == "Pointer" && innerType.InnerType!.Kind == "Function")
+                {
+                    // in case of a pointer to a function
+                    // we have to gen a [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+                    innerType = innerType.InnerType!;
+
+                    var delegateName = functionName + argumentName + "Delegate";
+                    var delegateCode = UnwrapFunctionTypeDescriptionToDelegate(innerType, delegateName);
+
+                    writer.WriteLine("\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]");
+                    writer.WriteLine($"\tpublic unsafe {delegateCode};");
+
+                    finalArgumentType = delegateName;
+                }
+                else
+                {
+                    finalArgumentType = "unknown_delegate";
+                    Console.WriteLine($"Unknown Type argument {argumentType.Name}");
+                }
+            }
+            else
+            {
+                if (!TryGetTypeConversionFromDescription(argumentType, out finalArgumentType))
+                {
+                    Console.WriteLine($"Failed to get type conversion for argument: {parameter.Type.Declaration}");
+                    finalArgumentType = "unknown";
+                }
+            }
+
+            if (finalArgumentType == "void*")
+            {
+                requiresUnsafe = true;
+            }
+
+            parameters.Add($"{finalArgumentType} {argumentName}");
+        }
+
+        writer.WriteLine($"\t[DllImport(\"cimgui/cimgui\", CallingConvention = CallingConvention.Cdecl)]");
+        writer.WriteLine($"\tpublic static extern {(requiresUnsafe ? "unsafe " : "")}{returnType} {functionName}({string.Join(", ", parameters)});");
+        writer.WriteLine();
+    }
+
+    writer.WriteLine("}");
+}
+
+bool IsKnownCSharpKeyword(string name)
+{
+    if (name == "ref")
+    {
+        return true;
+    }
+
+    if (name == "out")
+    {
+        return true;
+    }
+
+    if (name == "var")
+    {
+        return true;
+    }
+
+    if (name == "in")
+    {
+        return true;
+    }
+
+    return false;
+}
+
 string ConvertAttachedToSummary(string comment, string prefix = "")
 {
     if (comment == "")
@@ -707,12 +927,65 @@ string ConvertAttachedToSummary(string comment, string prefix = "")
            $"{prefix}/// </summary>";
 }
 
+string ConvertPrecedingToRemarks(string[] lines, string prefix = "")
+{
+    if (lines.Length == 0)
+    {
+        return $"{prefix}/// <remarks></remarks>";
+    }
+
+    var remarks = string.Join(
+        "\n",
+        lines
+            .Select(x => RemovePrecedingSlashes(x))
+            .Select(x => new System.Xml.Linq.XText(x).ToString())
+            .Select(x => $"{prefix}/// {x}")
+    );
+
+    return $"{prefix}/// <remarks>\n" +
+           $"{remarks}\n" +
+           $"{prefix}/// </remarks>";
+}
+
+string RemovePrecedingSlashes(string line)
+{
+    return line.StartsWith("// ")
+        ? line[3..]
+        : line.StartsWith("//")
+            ? line[2..]
+            : line;
+}
 
 record Definitions(
     List<DefineItem> Defines,
     List<EnumItem> Enums,
     List<TypedefItem> Typedefs,
-    List<StructItem> Structs
+    List<StructItem> Structs,
+    List<FunctionItem> Functions
+);
+
+record FunctionItem(
+    string Name,
+    string OriginalFullyQualifiedName,
+    TypeItem? ReturnType,
+    List<FunctionArgument> Arguments,
+    bool IsDefaultArgumentHelper,
+    bool IsManualHelper,
+    bool IsImstrHelper,
+    bool HasImstrHelper,
+    bool IsUnformattedHelper,
+    Comments? Comments,
+    List<ConditionalItem>? Conditionals,
+    bool IsInternal
+);
+
+record FunctionArgument(
+    string Name,
+    TypeItem? Type,
+    bool IsArray,
+    bool IsVarargs,
+    string? DefaultValue,
+    bool IsInstancePointer
 );
 
 record DefineItem(
@@ -739,12 +1012,12 @@ record StructItemField(
     bool IsAnonymous,
     string? ArrayBounds,
     Comments? Comments,
-    StructItemFieldType Type,
+    TypeItem Type,
     List<ConditionalItem> Conditionals,
     bool IsInternal
 );
 
-record StructItemFieldType(
+record TypeItem(
     string Declaration,
     TypeDescription Description
 );
