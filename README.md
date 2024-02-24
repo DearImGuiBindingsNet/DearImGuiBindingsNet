@@ -7,8 +7,13 @@ Uses [dear_bindings](https://github.com/dearimgui/dear_bindings)
 - Compiles cimgui in Docker
 - Generates definitions in Docker
 - Generates C# Enums, Enum constants, Typedefs (functions only), Defines, Structs, Functions.
+- Done: Sample program
 
-InProgress: Sample program
+## Pointer-based sample compiles and runs
+
+![image](https://github.com/DearImGuiBindingsNet/DearImGuiBindingsNet/assets/44116740/defada25-2731-442c-9813-6bb7ff1b9509)
+
+InProgress: Managed wrapper
 
 # Building
 
@@ -18,11 +23,6 @@ run on windows or linux (compiles with gcc)
 ```shell
 docker build -f dear_bindings.Dockerfile -t dear_bindings:v1 .;
 docker run --rm -it -v "${PWD}/cimgui:/cimgui_build" dear_bindings:v1;
-```
-v2 using cmake from original cimgui
-```shell
-docker build -f dear_bindings_v2.Dockerfile -t dear_bindings:v2 .;
-docker run --rm -it -v "${PWD}/cimgui:/cimgui_build" dear_bindings:v2;
 ```
 
 then just run this generator

@@ -29,7 +29,7 @@ RUN x86_64-w64-mingw32-gcc \
 -std=c++11 \
 #-g \
 -shared \
--DIMGUI_IMPL_API='extern "C" __declspec(dllexport)' \
+-DCIMGUI_API='extern "C" __declspec(dllexport)' \
 -DIMGUI_STATIC \
 -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1 \
 -O2 -fno-exceptions -fno-rtti \
@@ -57,7 +57,7 @@ RUN gcc \
 -std=c++11 \
 #-g \
 -shared -fPIC \
--DIMGUI_IMPL_API=extern"C" \
+-DCIMGUI_API='extern "C"' \
 -DIMGUI_STATIC \
 -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1 \
 -O2 -fno-exceptions -fno-rtti \
