@@ -1,55 +1,14 @@
 ﻿using System.Globalization;
-using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Text.Json;
-using DearImGuiBindings;
-
-// -------
-// sample
-// -------
-unsafe
-{
-    var context = ImGuiNative.ImGui_CreateContext((ImGuiNative.ImFontAtlas*) IntPtr.Zero);
-
-    ImGuiNative.ImGui_SetCurrentContext(context);
-    
-    var io = ImGuiNative.ImGui_GetIO();
-
-    byte* tex_pixels = null;
-    int tex_w, tex_h;
-    ImGuiNative.ImFontAtlas_GetTexDataAsRGBA32(io->Fonts, &tex_pixels, &tex_w, &tex_h, null);
-    
-    io->DisplaySize.x = 1920;
-    io->DisplaySize.y = 1080;
-    io->DeltaTime = 1.0f / 60.0f;
-    
-    ImGuiNative.ImGui_NewFrame();
-    
-    ImGuiNative.ImGui_ShowDemoWindow((bool*)1);
-
-    ImGuiNative.ImGui_Render();
-
-    var drawData = ImGuiNative.ImGui_GetDrawData();
-
-    var lists = drawData->CmdLists;
-
-    var listsData = lists.Data;
-
-    var listsDataVal = *listsData;
-
-    int breakpoint = 5;
-}
-
-return;
 
 const string genNamespace = "DearImGuiBindings";
 const string nativeClass = "ImGuiNative";
 
+const string outDir = "../DearImGuiBindings/generated";
+
 Dictionary<string, string> knownDefines = new()
 {
-    ["IMGUI_IMPL_API"] = "extern \"C\" __declspec(dllexport)",
+    ["CIMGUI_API"] = "extern \"C\" __declspec(dllexport)",
     ["IMGUI_DISABLE_OBSOLETE_FUNCTIONS"] = "",
     ["IMGUI_DISABLE_OBSOLETE_KEYIO"] = ""
 };
@@ -64,7 +23,7 @@ var definitions = JsonSerializer.Deserialize<Definitions>(
     }
 );
 
-var dirInfo = new DirectoryInfo("generated");
+var dirInfo = new DirectoryInfo(outDir);
 if (!dirInfo.Exists)
 {
     dirInfo.Create();
@@ -78,7 +37,7 @@ Dictionary<string, string> knownTypeConversions = new()
     ["unsigned char"] = "byte",
     ["unsigned_char"] = "byte",
     ["unsigned_int"] = "uint",
-    ["unsigned_short"] = "ushort",
+    ["unsigned_short"] = "char",
     ["long long"] = "long",
     ["long_long"] = "long",
     ["unsigned_long_long"] = "ulong",
@@ -88,13 +47,13 @@ Dictionary<string, string> knownTypeConversions = new()
     ["signed int"] = "int",
     ["signed long long"] = "long",
     ["unsigned long long"] = "ulong",
-    ["unsigned short"] = "ushort",
+    ["unsigned short"] = "char",
     ["float"] = "float",
     ["bool"] = "bool",
     ["char"] = "byte",
     ["double"] = "double",
     ["void"] = "void",
-    ["va_list"] = "System.IntPtr",
+    ["va_list"] = "__arglist", // special case
     ["size_t"] = "ulong" // assume only x64 for now
 };
 
@@ -160,7 +119,7 @@ bool EvalConditionals(List<ConditionalItem>? conditionals)
 
 void WriteDefines(List<DefineItem> defines)
 {
-    using var writer = new StreamWriter("generated/ImGui.Defines.cs");
+    using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Defines.cs"));
 
     writer.WriteLine($"namespace {genNamespace};");
     writer.WriteLine();
@@ -274,7 +233,7 @@ void WriteSingleDefine(DefineItem defineItem, StreamWriter streamWriter)
 
 void WriteEnums(List<EnumItem> enums)
 {
-    using var writer = new StreamWriter("generated/ImGui.Enums.cs");
+    using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Enums.cs"));
 
     writer.WriteLine($"namespace {genNamespace};");
     writer.WriteLine();
@@ -350,7 +309,7 @@ void WriteEnums(List<EnumItem> enums)
 
 void WriteEnumsRaw(List<EnumItem> enums)
 {
-    using var writer = new StreamWriter("generated/ImGui.Enums.Raw.cs");
+    using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Enums.Raw.cs"));
 
     writer.WriteLine($"namespace {genNamespace};");
     writer.WriteLine();
@@ -411,7 +370,7 @@ void WriteEnumsRaw(List<EnumItem> enums)
 
 void WriteTypedefs2(List<TypedefItem> typedefs)
 {
-    using var writer = new StreamWriter("generated/ImGui.Typedefs.cs");
+    using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Typedefs.cs"));
     writer.WriteLine("using System.Runtime.InteropServices;");
     writer.WriteLine();
     writer.WriteLine($"namespace {genNamespace};");
@@ -624,7 +583,7 @@ bool TryGetTypeConversionFromDescription(TypeDescription description, out string
 
 void WriteStructs(List<StructItem> structs)
 {
-    using var writer = new StreamWriter("generated/ImGui.Structs.cs");
+    using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Structs.cs"));
 
     writer.WriteLine("using System.Runtime.InteropServices;");
     writer.WriteLine($"namespace {genNamespace};");
@@ -773,7 +732,7 @@ void WriteStructs(List<StructItem> structs)
 
 void WriteFunctions(List<FunctionItem> functions)
 {
-    using var writer = new StreamWriter("generated/ImGui.Functions.cs");
+    using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Functions.cs"));
 
     writer.WriteLine("using System.Runtime.InteropServices;");
     writer.WriteLine($"namespace {genNamespace};");
@@ -888,10 +847,17 @@ void WriteFunctions(List<FunctionItem> functions)
                 requiresUnsafe = true;
             }
 
-            parameters.Add($"{finalArgumentType} {argumentName}");
+            if (finalArgumentType == "__arglist")
+            {
+                parameters.Add($"{finalArgumentType}");
+            }
+            else
+            {
+                parameters.Add($"{finalArgumentType} {argumentName}");
+            }
         }
 
-        writer.WriteLine($"\t[DllImport(\"cimgui/cimgui\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]");
+        writer.WriteLine($"\t[DllImport(\"cimgui\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]");
         writer.WriteLine($"\tpublic static extern {(requiresUnsafe ? "unsafe " : "")}{returnType} {functionName}({string.Join(", ", parameters)});");
         writer.WriteLine();
     }

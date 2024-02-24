@@ -19,11 +19,7 @@ InProgress: Managed wrapper
 
 cimgui lib and dear_bindings definitions are built in Docker
 
-run on windows or linux (compiles with gcc)
-```shell
-docker build -f dear_bindings.Dockerfile -t dear_bindings:v1 .;
-docker run --rm -it -v "${PWD}/cimgui:/cimgui_build" dear_bindings:v1;
-```
+run `build_natives.sh` on windows or linux (compiles with gcc)
 
 then just run this generator
 ```sh
