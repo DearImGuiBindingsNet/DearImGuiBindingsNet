@@ -27,6 +27,7 @@ RUN apt-get install -y cmake mingw-w64
 # https://github.com/ImGuiNET/ImGui.NET-nativebuild/blob/master/build-native.sh IMGUI_USE_WCHAR32 is not required
 RUN x86_64-w64-mingw32-gcc \
 -std=c++11 \
+#-g \
 -shared \
 -DIMGUI_IMPL_API='extern "C" __declspec(dllexport)' \
 -DIMGUI_STATIC \
@@ -54,6 +55,7 @@ COPY --from=generator /dear_bindings .
 # https://github.com/ImGuiNET/ImGui.NET-nativebuild/blob/master/build-native.sh IMGUI_USE_WCHAR32 is not required
 RUN gcc \
 -std=c++11 \
+#-g \
 -shared -fPIC \
 -DIMGUI_IMPL_API=extern"C" \
 -DIMGUI_STATIC \

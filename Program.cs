@@ -1,33 +1,48 @@
 ﻿using System.Globalization;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using DearImGuiBindings;
 
 // -------
 // sample
 // -------
-// unsafe
-// {
-//     var context = ImGuiNative.ImGui_CreateContext(null);
-//     
-//     ImGuiNative.ImGui_SetCurrentContext(context);
-//
-//     var io = ImGuiNative.ImGui_GetIO();
-//     
-//     ref var ds = ref Unsafe.AsRef<ImGuiNative.ImVec2>(&io->DisplaySize);
-//     
-//     ds.x = 600;
-//     ds.y = 1200;
-//
-//     ImGuiNative.ImGui_NewFrame();
-//     var testRef = "test".AsSpan().GetPinnableReference();
-//
-//     var ptr = (char*)Unsafe.AsPointer(ref testRef);
-//     bool p_open = false;
-//     ImGuiNative.ImGui_Begin(ptr, &p_open, 0);
-// }
-//
-// return;
+unsafe
+{
+    var context = ImGuiNative.ImGui_CreateContext((ImGuiNative.ImFontAtlas*) IntPtr.Zero);
+
+    ImGuiNative.ImGui_SetCurrentContext(context);
+    
+    var io = ImGuiNative.ImGui_GetIO();
+
+    byte* tex_pixels = null;
+    int tex_w, tex_h;
+    ImGuiNative.ImFontAtlas_GetTexDataAsRGBA32(io->Fonts, &tex_pixels, &tex_w, &tex_h, null);
+    
+    io->DisplaySize.x = 1920;
+    io->DisplaySize.y = 1080;
+    io->DeltaTime = 1.0f / 60.0f;
+    
+    ImGuiNative.ImGui_NewFrame();
+    
+    ImGuiNative.ImGui_ShowDemoWindow((bool*)1);
+
+    ImGuiNative.ImGui_Render();
+
+    var drawData = ImGuiNative.ImGui_GetDrawData();
+
+    var lists = drawData->CmdLists;
+
+    var listsData = lists.Data;
+
+    var listsDataVal = *listsData;
+
+    int breakpoint = 5;
+}
+
+return;
 
 const string genNamespace = "DearImGuiBindings";
 const string nativeClass = "ImGuiNative";
@@ -68,7 +83,7 @@ Dictionary<string, string> knownTypeConversions = new()
     ["long_long"] = "long",
     ["unsigned_long_long"] = "ulong",
     ["short"] = "short",
-    ["signed char"] = "char",
+    ["signed char"] = "sbyte",
     ["signed short"] = "short",
     ["signed int"] = "int",
     ["signed long long"] = "long",
@@ -76,7 +91,7 @@ Dictionary<string, string> knownTypeConversions = new()
     ["unsigned short"] = "ushort",
     ["float"] = "float",
     ["bool"] = "bool",
-    ["char"] = "char",
+    ["char"] = "byte",
     ["double"] = "double",
     ["void"] = "void",
     ["va_list"] = "System.IntPtr",
@@ -718,14 +733,13 @@ void WriteStructs(List<StructItem> structs)
 
                     var delegateCode = UnwrapFunctionTypeDescriptionToDelegate(innerType, name + "Delegate");
 
-                    writer.WriteLine($"\t\tpublic {name + "Delegate"} {name};");
+                    writer.WriteLine($"\t\tpublic unsafe {name + "Delegate"}* {name};");
                     writer.WriteLine();
 
                     writer.WriteLine("\t\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]");
                     writer.WriteLine($"\t\tpublic unsafe {delegateCode};");
 
                     Console.WriteLine($"Written delegate for {field.Name} of {structItem.Name}");
-                    Console.WriteLine($"{delegateCode}");
                 }
                 else
                 {
@@ -851,7 +865,8 @@ void WriteFunctions(List<FunctionItem> functions)
                     writer.WriteLine("\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]");
                     writer.WriteLine($"\tpublic unsafe {delegateCode};");
 
-                    finalArgumentType = delegateName;
+                    // delegates are always used as pointers
+                    finalArgumentType = $"{delegateName}*";
                 }
                 else
                 {
@@ -876,7 +891,7 @@ void WriteFunctions(List<FunctionItem> functions)
             parameters.Add($"{finalArgumentType} {argumentName}");
         }
 
-        writer.WriteLine($"\t[DllImport(\"cimgui/cimgui\", CallingConvention = CallingConvention.Cdecl)]");
+        writer.WriteLine($"\t[DllImport(\"cimgui/cimgui\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]");
         writer.WriteLine($"\tpublic static extern {(requiresUnsafe ? "unsafe " : "")}{returnType} {functionName}({string.Join(", ", parameters)});");
         writer.WriteLine();
     }
