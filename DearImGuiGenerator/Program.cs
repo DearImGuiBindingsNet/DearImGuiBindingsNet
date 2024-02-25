@@ -13,7 +13,7 @@ Dictionary<string, string> knownDefines = new()
     ["IMGUI_DISABLE_OBSOLETE_KEYIO"] = ""
 };
 
-using var fs = new FileStream("./cimgui/cimgui.json", FileMode.Open);
+using var fs = new FileStream("../cimgui/cimgui.json", FileMode.Open);
 
 var definitions = JsonSerializer.Deserialize<Definitions>(
     fs,

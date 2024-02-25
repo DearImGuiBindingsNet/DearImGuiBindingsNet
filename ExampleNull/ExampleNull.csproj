@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="DearImGuiBindings" Version="1.0.0" />
+      <ProjectReference Include="..\DearImGuiBindings\DearImGuiBindings.csproj" />
     </ItemGroup>
 
 </Project>

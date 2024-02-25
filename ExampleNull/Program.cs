@@ -36,5 +36,7 @@ unsafe
         ImGuiNative.ImGui_ShowDemoWindow((bool*)1);
 
         ImGuiNative.ImGui_Render();
+
+        Console.WriteLine($"Ran frame {i}");
     }
 }
