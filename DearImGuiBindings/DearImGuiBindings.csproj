@@ -5,6 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <RuntimeIdentifiers>win-x64;linux-x64;osx</RuntimeIdentifiers>
     </PropertyGroup>
     
     <ItemGroup>
@@ -39,8 +40,11 @@
         <Folder Include="generated\" />
     </ItemGroup>
     
-
-<!-- Credits to ImGui.NET fro this piece of code on copying natives into a build folder -->
+    <Target Name="Echo Runtime Identifier" AfterTargets="PostBuildEvent">
+        <Message Importance="high" Text=" Runtime Identifier: '$(RuntimeIdentifier)' " />
+    </Target>
+    
+<!-- Credits to ImGui.NET for this piece of code on copying natives into a build folder -->
     <PropertyGroup>
         <_IsWindows Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</_IsWindows>
         <_IsMacOS Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</_IsMacOS>
@@ -52,9 +56,13 @@
         <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsWindows)' == 'true' And ('$(Prefer32Bit)' == 'true' Or '$(PlatformTarget)' == 'x86')">win-x86</_NativeRuntime>
         <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsWindows)' == 'true' And ('$(Prefer32Bit)' == 'false' Or '$(PlatformTarget)' == 'x64')">win-x64</_NativeRuntime>
 
-        <_NativeLibName Condition="'$(_NativeRuntime)' == 'win-x86' Or '$(_NativeRuntime)' == 'win-x64'">cimgui.dll</_NativeLibName>
-        <_NativeLibName Condition="'$(_NativeRuntime)' == 'osx'">cimgui.dylib</_NativeLibName>
-        <_NativeLibName Condition="'$(_NativeRuntime)' == 'linux-x64'">cimgui.so</_NativeLibName>
+        <_NativeLibName Condition=" '$(_NativeRuntime)' == 'win-x86' Or '$(_NativeRuntime)' == 'win-x64' ">cimgui.dll</_NativeLibName>
+        <_NativeLibName Condition=" '$(_NativeRuntime)' == 'linux-x64' ">cimgui.so</_NativeLibName>
+        <_NativeLibName Condition=" '$(_NativeRuntime)' == 'osx' ">cimgui.dylib</_NativeLibName>
+
+        <_NativeLibName Condition=" '$(RuntimeIdentifier)'=='win-x64' ">cimgui.dll</_NativeLibName>
+        <_NativeLibName Condition=" '$(RuntimeIdentifier)'=='linux-x64' ">cimgui.so</_NativeLibName>
+        <_NativeLibName Condition=" '$(RuntimeIdentifier)'=='osx' ">cimgui.dylib</_NativeLibName>
     </PropertyGroup>
     <ItemGroup>
         <Content Condition="'$(_NativeRuntime)' != ''" Include="$(MSBuildThisFileDirectory)..\cimgui\$(_NativeLibName)">
@@ -63,5 +71,6 @@
             <Visible>False</Visible>
         </Content>
     </ItemGroup>
+    
     
 </Project>
