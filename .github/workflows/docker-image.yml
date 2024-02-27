@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: Build natives
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
     - name: Run Docker image
       run: |
         scriptPath="`dirname \"$0\"`"
-        docker --rm -i -v "${scriptPath}/cimgui:/cimgui_build" dear_bindings:v1
+        docker run --rm -i -v "${scriptPath}/cimgui:/cimgui_build" dear_bindings:v1
     - name: Verify compilation
       run: |
         file cimgui/cimgui.dll
