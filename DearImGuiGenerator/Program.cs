@@ -1,10 +1,13 @@
 ﻿using System.Globalization;
 using System.Text.Json;
+using DearImguiGenerator;
 
 const string genNamespace = "DearImGuiBindings";
 const string nativeClass = "ImGuiNative";
 
 const string outDir = "../DearImGuiBindings/generated";
+
+var sharpClass = new CSharpClass(nativeClass);
 
 Dictionary<string, string> knownDefines = new()
 {
@@ -57,39 +60,98 @@ Dictionary<string, string> knownTypeConversions = new()
     ["size_t"] = "ulong" // assume only x64 for now
 };
 
-Dictionary<string, string> customTypeConversions = new();
+Dictionary<string, string> cppToSharpKnownConversions = new()
+{
+    ["int"] = "int",
+    ["unsigned int"] = "uint",
+    ["unsigned char"] = "byte",
+    ["unsigned_char"] = "byte",
+    ["unsigned_int"] = "uint",
+    ["unsigned_short"] = "ushort",
+    ["long long"] = "long",
+    ["long_long"] = "long",
+    ["unsigned_long_long"] = "ulong",
+    ["short"] = "short",
+    ["signed char"] = "sbyte",
+    ["signed short"] = "short",
+    ["signed int"] = "int",
+    ["signed long long"] = "long",
+    ["unsigned long long"] = "ulong",
+    ["unsigned short"] = "ushort",
+    ["float"] = "float",
+    ["bool"] = "bool",
+    ["char"] = "byte",
+    ["double"] = "double",
+    ["void"] = "void",
+    ["va_list"] = "__arglist", // special case
+    ["size_t"] = "ulong" // assume only x64 for now
+};
 
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing Defines");
 Console.WriteLine("---------------------");
-WriteDefines(definitions.Defines);
+var constants = WriteDefines(definitions.Defines);
 
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing EnumsRaw");
 Console.WriteLine("---------------------");
-WriteEnumsRaw(definitions.Enums);
+var enumsConstants = WriteEnumsRaw(definitions.Enums);
 
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing Enums");
 Console.WriteLine("---------------------");
-WriteEnums(definitions.Enums);
+var enums = WriteEnums(definitions.Enums);
+
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing Typedefs");
 Console.WriteLine("---------------------");
-WriteTypedefs2(definitions.Typedefs);
+var typedefs = WriteTypedefs2(definitions.Typedefs);
+
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing Structs");
 Console.WriteLine("---------------------");
-WriteStructs(definitions.Structs);
+var structs = WriteStructs(definitions.Structs);
+
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing Functions");
 Console.WriteLine("---------------------");
-WriteFunctions(definitions.Functions);
+var (functions, delegates) = WriteFunctions(definitions.Functions);
 
 Console.WriteLine("---------------------");
 Console.WriteLine("Done");
 Console.WriteLine("---------------------");
+
+var preprocessor = new CSharpCodePreprocessor(
+    constants,
+    enumsConstants,
+    enums,
+    typedefs,
+    structs,
+    functions,
+    delegates
+);
+
+preprocessor.Preprocess();
+
 int x = 5;
+
+void AttachComments(Comments? comments, CSharpDefinition definition)
+{
+    string? trailingComment = null;
+    string[]? precedingComment = null;
+    if (comments?.Attached is not null)
+    {
+        trailingComment = RemovePrecedingSlashes(comments.Attached);
+    }
+
+    if (comments?.Preceding is not null)
+    {
+        precedingComment = TrimPreceding(comments.Preceding);
+    }
+
+    definition.TrailingComment = trailingComment;
+    definition.PrecedingComment = precedingComment;
+}
 
 bool EvalConditionals(List<ConditionalItem>? conditionals)
 {
@@ -117,7 +179,7 @@ bool EvalConditionals(List<ConditionalItem>? conditionals)
     }
 }
 
-void WriteDefines(List<DefineItem> defines)
+List<CSharpConstant> WriteDefines(List<DefineItem> defines)
 {
     using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Defines.cs"));
 
@@ -130,13 +192,26 @@ void WriteDefines(List<DefineItem> defines)
     // dear_bindings writes defines in a strange manner, producing redefines, so when we group them by count, we can produce more accurate result
     var defineGroups = defines.GroupBy(x => x.Conditionals?.Count ?? 0);
 
+    List<CSharpConstant> cSharpConstants = [];
+    
     foreach (var group in defineGroups)
     {
         if (group.Key == 0)
         {
             foreach (var define in group)
             {
-                WriteSingleDefine(define, writer);
+                var constant = WriteSingleDefine(define, writer);
+
+                if (constant is not null)
+                {
+                    AttachComments(define.Comments, constant);
+                    cSharpConstants.Add(constant);
+                }
+                else
+                {
+                    Console.WriteLine($"Failed to convert {define.Name} into C# definition");
+                }
+
                 writer.WriteLine();
                 knownDefines[define.Name] = define.Content ?? "";
             }
@@ -148,7 +223,17 @@ void WriteDefines(List<DefineItem> defines)
                 var condition = EvalConditionals(define.Conditionals);
                 if (condition)
                 {
-                    WriteSingleDefine(define, writer);
+                    var constant = WriteSingleDefine(define, writer);
+                    if (constant is not null)
+                    {
+                        AttachComments(define.Comments, constant);
+                        cSharpConstants.Add(constant);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Failed to convert {define.Name} into C# definition");
+                    }
+
                     writer.WriteLine();
                     knownDefines[define.Name] = define.Content ?? "";
                 }
@@ -169,7 +254,17 @@ void WriteDefines(List<DefineItem> defines)
                 );
                 if (condition)
                 {
-                    WriteSingleDefine(define, writer);
+                    var constant = WriteSingleDefine(define, writer);
+                    if (constant is not null)
+                    {
+                        AttachComments(define.Comments, constant);
+                        cSharpConstants.Add(constant);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Failed to convert {define.Name} into C# definition");
+                    }
+
                     writer.WriteLine();
                     newDefines[define.Name] = define.Content ?? "";
                 }
@@ -187,18 +282,24 @@ void WriteDefines(List<DefineItem> defines)
     }
 
     writer.WriteLine("}");
+
+    return cSharpConstants;
 }
 
-void WriteSingleDefine(DefineItem defineItem, StreamWriter streamWriter)
+CSharpConstant? WriteSingleDefine(DefineItem defineItem, StreamWriter streamWriter)
 {
     if (string.IsNullOrEmpty(defineItem.Content))
     {
         // this is a bool
         streamWriter.WriteLine($"\tpublic const bool {defineItem.Name} = true;");
+
+        return new CSharpConstant(defineItem.Name, "bool", "true");
     }
     else if (knownDefines.ContainsKey(defineItem.Content))
     {
         streamWriter.WriteLine($"\tpublic const bool {defineItem.Name} = {defineItem.Content};");
+        
+        return new CSharpConstant(defineItem.Name, "bool", defineItem.Content);
     }
     else if (defineItem.Content.StartsWith("0x") &&
              long.TryParse(
@@ -215,6 +316,8 @@ void WriteSingleDefine(DefineItem defineItem, StreamWriter streamWriter)
         streamWriter.WriteLine($"\t/// Original value: {defineItem.Content}");
         streamWriter.WriteLine($"\t/// </summary>");
         streamWriter.WriteLine($"\tpublic const long {defineItem.Name} = {parsed};");
+        
+        return new CSharpConstant(defineItem.Name, "long", defineItem.Content);
     }
     else if (defineItem.Content.StartsWith('\"') && defineItem.Content.EndsWith('\"'))
     {
@@ -223,15 +326,19 @@ void WriteSingleDefine(DefineItem defineItem, StreamWriter streamWriter)
         streamWriter.WriteLine($"\t/// Original value: {defineItem.Content}");
         streamWriter.WriteLine($"\t/// </summary>");
         streamWriter.WriteLine($"\tpublic const string {defineItem.Name} = {defineItem.Content};");
+        
+        return new CSharpConstant(defineItem.Name, "string", defineItem.Content);
     }
     else
     {
         streamWriter.WriteLine($"\t// public const string {defineItem.Name} = {defineItem.Content};");
         Console.WriteLine($"Unknown define type: {defineItem.Content}");
+        
+        return new CSharpConstant(defineItem.Name, "string", defineItem.Content);
     }
 }
 
-void WriteEnums(List<EnumItem> enums)
+List<CSharpEnum> WriteEnums(List<EnumItem> enums)
 {
     using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Enums.cs"));
 
@@ -241,6 +348,8 @@ void WriteEnums(List<EnumItem> enums)
 
     writer.WriteLine("{");
 
+    List<CSharpEnum> cSharpEnums = [];
+    
     foreach (var enumDecl in enums)
     {
         if (!EvalConditionals(enumDecl.Conditionals))
@@ -251,9 +360,14 @@ void WriteEnums(List<EnumItem> enums)
 
         var name = enumDecl.Name.TrimEnd('_');
 
+        var cSharpEnum = new CSharpEnum(enumDecl.Name);
+        
+        AttachComments(enumDecl.Comments, cSharpEnum);
+
         if (enumDecl.IsFlagsEnum)
         {
             writer.WriteLine($"\t[Flags]");
+            cSharpEnum.Attributes.Add("Flags");
         }
 
         writer.WriteLine($"\tpublic enum {name}");
@@ -298,16 +412,25 @@ void WriteEnums(List<EnumItem> enums)
             {
                 writer.WriteLine();
             }
+
+            var cSharpEnumValue = new CSharpNamedValue(enumElementName, enumElement.Value.ToString());
+
+            AttachComments(enumElement.Comments, cSharpEnumValue);
+            cSharpEnum.Values.Add(cSharpEnumValue);
         }
+
+        cSharpEnums.Add(cSharpEnum);
 
         writer.WriteLine("\t}");
         writer.WriteLine();
     }
 
     writer.WriteLine("}");
+    
+    return cSharpEnums;
 }
 
-void WriteEnumsRaw(List<EnumItem> enums)
+List<CSharpConstant> WriteEnumsRaw(List<EnumItem> enums)
 {
     using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Enums.Raw.cs"));
 
@@ -317,6 +440,8 @@ void WriteEnumsRaw(List<EnumItem> enums)
 
     writer.WriteLine("{");
 
+    List<CSharpConstant> cSharpConstants = [];
+    
     foreach (var enumDecl in enums)
     {
         if (enumDecl.Conditionals is {Count: > 0} && !EvalConditionals(enumDecl.Conditionals))
@@ -324,8 +449,6 @@ void WriteEnumsRaw(List<EnumItem> enums)
             Console.WriteLine($"Skipped enum {enumDecl.Name} because it's covered with falsy conditional");
             continue;
         }
-
-        var name = enumDecl.Name.TrimEnd('_');
 
         foreach (var (enumElement, index) in enumDecl.Elements.Select((x, i) => (x, i)))
         {
@@ -362,13 +485,20 @@ void WriteEnumsRaw(List<EnumItem> enums)
             // separator
             writer.WriteLine(";");
             writer.WriteLine();
+
+            var cSharpConstant = new CSharpConstant(enumElementName, "int", enumElement.Value.ToString());
+            AttachComments(enumElement.Comments, cSharpConstant);
+            
+            cSharpConstants.Add(cSharpConstant);
         }
     }
 
     writer.WriteLine("}");
+
+    return cSharpConstants;
 }
 
-void WriteTypedefs2(List<TypedefItem> typedefs)
+List<CSharpDefinition> WriteTypedefs2(List<TypedefItem> typedefs)
 {
     using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Typedefs.cs"));
     writer.WriteLine("using System.Runtime.InteropServices;");
@@ -378,6 +508,8 @@ void WriteTypedefs2(List<TypedefItem> typedefs)
     writer.WriteLine($"public static partial class {nativeClass}");
 
     writer.WriteLine("{");
+
+    List<CSharpDefinition> cSharpDefinitions = [];
     foreach (var typedef in typedefs)
     {
         if (!EvalConditionals(typedef.Conditionals))
@@ -395,18 +527,70 @@ void WriteTypedefs2(List<TypedefItem> typedefs)
 
         var typeDescription = typedef.Type.Description;
 
-        SaveTypeConversion(
+        var cSharpDefinition = SaveTypeConversion(
             writer,
             typeDescription,
             typedef.Name,
             summary
         );
+
+        if (cSharpDefinition is not null)
+        {
+            AttachComments(typedef.Comments, cSharpDefinition);
+            cSharpDefinitions.Add(cSharpDefinition);
+        }
+        else
+        {
+            Console.WriteLine($"Failed to write C# definition for {typedef.Name}");
+        }
     }
 
     writer.WriteLine("}");
+
+    return cSharpDefinitions;
 }
 
-void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, string sourceType, string? summary)
+string GetCSharpTypeOfDescription(TypeDescription typeDescription)
+{
+    switch (typeDescription.Kind)
+    {
+        case "Builtin":
+        {
+            var type = typeDescription.BuiltinType!;
+
+            return cppToSharpKnownConversions.GetValueOrDefault(type, "unknown");
+        }
+        case "User":
+        {
+            var type = typeDescription.Name!;
+
+            return type;
+        }
+        case "Pointer":
+        {
+            var innerType = typeDescription.InnerType!;
+
+            return GetCSharpTypeOfDescription(innerType) + "*";
+        }
+        case "Type":
+        {
+            var innerType = typeDescription.InnerType!;
+
+            var name = typeDescription.Name;
+
+            if (innerType.Kind == "Pointer" && innerType.InnerType!.Kind == "Function")
+            {
+                return name + "Delegate";
+            }
+
+            return "unknown";
+        }
+    }
+
+    return "unknown";
+}
+
+CSharpDefinition? SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, string sourceType, string? summary)
 {
     switch (typeDescription.Kind)
     {
@@ -419,11 +603,17 @@ void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, st
                 // typedef MyInt = int
                 // so we store MyInt into known conversions, which allows us to further substitute int onto MyInt
                 knownTypeConversions[sourceType] = matchedType;
+
                 Console.WriteLine($"Saved Builtin typedef: {sourceType} -> {matchedType}");
             }
             else
             {
                 Console.WriteLine($"Unknown Builtin typedef: {type}");
+            }
+
+            if (cppToSharpKnownConversions.TryGetValue(type, out var cSharpType))
+            {
+                return new CSharpTypeReassignment(sourceType, cSharpType);
             }
 
             break;
@@ -445,6 +635,8 @@ void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, st
                 Console.WriteLine($"Unknown User typedef: {type}");
             }
 
+            return new CSharpTypeReassignment(sourceType, type);
+
             break;
         }
         case "Pointer":
@@ -459,6 +651,17 @@ void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, st
             else
             {
                 Console.WriteLine($"Failed to determine type of Pointer typedef: {typeDescription.Name}");
+            }
+
+            var unmodifiedType = GetCSharpTypeOfDescription(innerType);
+
+            if (unmodifiedType is not null)
+            {
+                return new CSharpTypeReassignment(sourceType, $"{unmodifiedType}*");
+            }
+            else
+            {
+                Console.WriteLine("CSHARPCODEGEN: Failed to determine type of pointer");
             }
 
             break;
@@ -476,13 +679,14 @@ void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, st
                 // we have to gen a [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
                 innerType = innerType.InnerType!;
 
-                var delegateCode = UnwrapFunctionTypeDescriptionToDelegate(innerType, name);
+                var (delegateCode, cSharpDelegate) = UnwrapFunctionTypeDescriptionToDelegate(innerType, name);
 
                 writer.WriteLine(summary);
                 writer.WriteLine("\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]");
                 writer.WriteLine($"\tpublic unsafe {delegateCode};");
 
                 Console.WriteLine($"Unwrapped function pointer {name}");
+                return cSharpDelegate;
             }
             else
             {
@@ -497,19 +701,24 @@ void SaveTypeConversion(StreamWriter writer, TypeDescription typeDescription, st
             break;
         }
     }
+    return null;
 }
 
-string UnwrapFunctionTypeDescriptionToDelegate(TypeDescription description, string name)
+(string, CSharpDelegate) UnwrapFunctionTypeDescriptionToDelegate(TypeDescription description, string name)
 {
     if (!TryGetTypeConversionFromDescription(description.ReturnType!, out var returnType))
     {
         returnType = "unknown";
     }
 
+    var cSharpReturnType = GetCSharpTypeOfDescription(description.ReturnType!);
+
+    var cSharpDelegate = new CSharpDelegate(name, cSharpReturnType);
+    
     List<string> parameters = new();
     foreach (var parameter in description.Parameters!)
     {
-        var argumentName = parameter.Name;
+        var argumentName = parameter.Name!;
         var argumentType = parameter;
         if (parameter.Kind == "Type")
         {
@@ -526,9 +735,13 @@ string UnwrapFunctionTypeDescriptionToDelegate(TypeDescription description, stri
         }
 
         parameters.Add($"{matchedArgumentType} {argumentName}");
+
+        var cSharpType = GetCSharpTypeOfDescription(argumentType!);
+        
+        cSharpDelegate.Arguments.Add(new CSharpTypedVariable(argumentName, cSharpType));
     }
 
-    return $"delegate {returnType} {name}({string.Join(", ", parameters)})";
+    return ($"delegate {returnType} {name}({string.Join(", ", parameters)})", cSharpDelegate);
 }
 
 bool TryGetTypeConversionFromDescription(TypeDescription description, out string matchedType)
@@ -581,7 +794,7 @@ bool TryGetTypeConversionFromDescription(TypeDescription description, out string
     return false;
 }
 
-void WriteStructs(List<StructItem> structs)
+List<CSharpStruct> WriteStructs(List<StructItem> structs)
 {
     using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Structs.cs"));
 
@@ -592,6 +805,8 @@ void WriteStructs(List<StructItem> structs)
     writer.WriteLine($"public static partial class {nativeClass}");
 
     writer.WriteLine("{");
+
+    List<CSharpStruct> cSharpStructs = [];
 
     foreach (var structItem in structs)
     {
@@ -604,6 +819,11 @@ void WriteStructs(List<StructItem> structs)
 
         writer.WriteLine($"\tpublic struct {structItem.Name}");
         writer.WriteLine("\t{");
+
+        var cSharpStruct = new CSharpStruct(structItem.Name);
+        
+        AttachComments(structItem.Comments, cSharpStruct);
+
         foreach (var field in structItem.Fields)
         {
             if (!EvalConditionals(field.Conditionals))
@@ -630,6 +850,7 @@ void WriteStructs(List<StructItem> structs)
             if (field.IsArray)
             {
                 fieldType = fieldType.InnerType!;
+                
                 if (fieldType.Kind == "Builtin")
                 {
                     if (TryGetTypeConversionFromDescription(fieldType, out var matchedType))
@@ -676,6 +897,13 @@ void WriteStructs(List<StructItem> structs)
                         Console.WriteLine($"Failed to determine User type for InlineArray {field.Name} of {structItem.Name}");
                     }
                 }
+
+                var cSharpType = GetCSharpTypeOfDescription(fieldType);
+
+                var cSharpField = new CSharpTypedVariable(field.Name, cSharpType);
+                AttachComments(field.Comments, cSharpStruct);
+
+                cSharpStruct.Fields.Add(cSharpField);
             }
             else if (fieldType.Kind == "Type")
             {
@@ -690,7 +918,7 @@ void WriteStructs(List<StructItem> structs)
                     // we have to gen a [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
                     innerType = innerType.InnerType!;
 
-                    var delegateCode = UnwrapFunctionTypeDescriptionToDelegate(innerType, name + "Delegate");
+                    var (delegateCode, cSharpDelegate) = UnwrapFunctionTypeDescriptionToDelegate(innerType, name + "Delegate");
 
                     writer.WriteLine($"\t\tpublic unsafe {name + "Delegate"}* {name};");
                     writer.WriteLine();
@@ -699,6 +927,14 @@ void WriteStructs(List<StructItem> structs)
                     writer.WriteLine($"\t\tpublic unsafe {delegateCode};");
 
                     Console.WriteLine($"Written delegate for {field.Name} of {structItem.Name}");
+
+                    cSharpStruct.InnerDeclarations.Add(cSharpDelegate);
+
+                    var cSharpType = GetCSharpTypeOfDescription(fieldType.InnerType!);
+                    var cSharpField = new CSharpTypedVariable(field.Name, cSharpType);
+                    AttachComments(field.Comments, cSharpField);
+
+                    cSharpStruct.Fields.Add(cSharpField);
                 }
                 else
                 {
@@ -716,6 +952,11 @@ void WriteStructs(List<StructItem> structs)
                     writer.WriteLine($"\t\t// {field.Type.Declaration}");
                     Console.WriteLine($"Failed to determine type of field {field.Name} of {structItem.Name}");
                 }
+
+                var cSharpType = GetCSharpTypeOfDescription(fieldType);
+                var cSharpField = new CSharpTypedVariable(field.Name, cSharpType);
+                AttachComments(field.Comments, cSharpField);
+                cSharpStruct.Fields.Add(cSharpField);
             }
 
             writer.WriteLine();
@@ -725,12 +966,16 @@ void WriteStructs(List<StructItem> structs)
 
         writer.WriteLine("\t}");
         writer.WriteLine();
+        
+        cSharpStructs.Add(cSharpStruct);
     }
 
     writer.WriteLine("}");
+
+    return cSharpStructs;
 }
 
-void WriteFunctions(List<FunctionItem> functions)
+(List<CSharpFunction> Functions, List<CSharpDelegate> Delegates) WriteFunctions(List<FunctionItem> functions)
 {
     using var writer = new StreamWriter(Path.Combine(outDir, "ImGui.Functions.cs"));
 
@@ -741,6 +986,9 @@ void WriteFunctions(List<FunctionItem> functions)
     writer.WriteLine($"public static partial class {nativeClass}");
 
     writer.WriteLine("{");
+
+    List<CSharpFunction> cSharpFunctions = [];
+    List<CSharpDelegate> cSharpDelegates = [];
 
     foreach (var functionItem in functions)
     {
@@ -764,6 +1012,12 @@ void WriteFunctions(List<FunctionItem> functions)
         {
             Console.WriteLine($"Failed to get type conversion for return_type: {returnType}");
         }
+
+        var cSharpReturnType = GetCSharpTypeOfDescription(functionItem.ReturnType!.Description);
+
+        var cSharpFunction = new CSharpFunction(functionName, cSharpReturnType);
+        
+        AttachComments(functionItem.Comments, cSharpFunction);
 
         if (functionItem.ReturnType!.Description.Kind == "Pointer")
         {
@@ -806,6 +1060,11 @@ void WriteFunctions(List<FunctionItem> functions)
                 {
                     finalArgumentType = finalArgumentType + "*";
                 }
+
+                var cSharpType = GetCSharpTypeOfDescription(argumentType.InnerType);
+
+                var cSharpArgument = new CSharpTypedVariable(parameter.Name, cSharpType, true);
+                cSharpFunction.Arguments.Add(cSharpArgument);
             }
             else if (argumentType.Kind == "Type")
             {
@@ -819,19 +1078,24 @@ void WriteFunctions(List<FunctionItem> functions)
                     innerType = innerType.InnerType!;
 
                     var delegateName = functionName + argumentName + "Delegate";
-                    var delegateCode = UnwrapFunctionTypeDescriptionToDelegate(innerType, delegateName);
+                    var (delegateCode, cSharpDelegate) = UnwrapFunctionTypeDescriptionToDelegate(innerType, delegateName);
 
                     writer.WriteLine("\t[UnmanagedFunctionPointer(CallingConvention.Cdecl)]");
                     writer.WriteLine($"\tpublic unsafe {delegateCode};");
 
                     // delegates are always used as pointers
                     finalArgumentType = $"{delegateName}*";
+                    cSharpDelegates.Add(cSharpDelegate);
                 }
                 else
                 {
                     finalArgumentType = "unknown_delegate";
                     Console.WriteLine($"Unknown Type argument {argumentType.Name}");
                 }
+
+                var cSharpType = GetCSharpTypeOfDescription(argumentType);
+
+                cSharpFunction.Arguments.Add(new CSharpTypedVariable(parameter.Name, cSharpType));
             }
             else
             {
@@ -840,6 +1104,10 @@ void WriteFunctions(List<FunctionItem> functions)
                     Console.WriteLine($"Failed to get type conversion for argument: {parameter.Type.Declaration}");
                     finalArgumentType = "unknown";
                 }
+
+                var cSharpType = GetCSharpTypeOfDescription(argumentType);
+
+                cSharpFunction.Arguments.Add(new CSharpTypedVariable(parameter.Name, cSharpType));
             }
 
             if (finalArgumentType == "void*")
@@ -860,9 +1128,13 @@ void WriteFunctions(List<FunctionItem> functions)
         writer.WriteLine($"\t[DllImport(\"cimgui\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]");
         writer.WriteLine($"\tpublic static extern {(requiresUnsafe ? "unsafe " : "")}{returnType} {functionName}({string.Join(", ", parameters)});");
         writer.WriteLine();
+        
+        cSharpFunctions.Add(cSharpFunction);
     }
 
     writer.WriteLine("}");
+
+    return (cSharpFunctions, cSharpDelegates);
 }
 
 bool IsKnownCSharpKeyword(string name)
@@ -928,6 +1200,16 @@ string ConvertPrecedingToRemarks(string[] lines, string prefix = "")
            $"{prefix}/// </remarks>";
 }
 
+string[] TrimPreceding(string[] lines)
+{
+    if (lines.Length == 0)
+    {
+        return lines;
+    }
+
+    return lines.Select(x => RemovePrecedingSlashes(x)).ToArray();
+}
+
 string RemovePrecedingSlashes(string line)
 {
     return line.StartsWith("// ")
@@ -936,130 +1218,3 @@ string RemovePrecedingSlashes(string line)
             ? line[2..]
             : line;
 }
-
-record Definitions(
-    List<DefineItem> Defines,
-    List<EnumItem> Enums,
-    List<TypedefItem> Typedefs,
-    List<StructItem> Structs,
-    List<FunctionItem> Functions
-);
-
-record FunctionItem(
-    string Name,
-    string OriginalFullyQualifiedName,
-    TypeItem? ReturnType,
-    List<FunctionArgument> Arguments,
-    bool IsDefaultArgumentHelper,
-    bool IsManualHelper,
-    bool IsImstrHelper,
-    bool HasImstrHelper,
-    bool IsUnformattedHelper,
-    Comments? Comments,
-    List<ConditionalItem>? Conditionals,
-    bool IsInternal
-);
-
-record FunctionArgument(
-    string Name,
-    TypeItem? Type,
-    bool IsArray,
-    bool IsVarargs,
-    string? DefaultValue,
-    bool IsInstancePointer
-);
-
-record DefineItem(
-    string Name,
-    string? Content,
-    List<ConditionalItem>? Conditionals
-);
-
-record StructItem(
-    string Name,
-    string OriginalFullyQualifiedName,
-    string Kind,
-    bool ByValue,
-    bool ForwardDeclaration,
-    bool IsAnonymous,
-    List<StructItemField> Fields,
-    Comments? Comments,
-    bool IsInternal
-);
-
-record StructItemField(
-    string Name,
-    bool IsArray,
-    bool IsAnonymous,
-    string? ArrayBounds,
-    Comments? Comments,
-    TypeItem Type,
-    List<ConditionalItem> Conditionals,
-    bool IsInternal
-);
-
-record TypeItem(
-    string Declaration,
-    TypeDescription Description
-);
-
-record TypeDescription(
-    string Kind,
-    string? Name,
-    string? BuiltinType,
-    TypeDescription? ReturnType,
-    TypeDescription? InnerType,
-    List<TypeDescription>? Parameters
-);
-
-record TypedefItem(
-    string Name,
-    TypedefType Type,
-    Comments Comments,
-    List<ConditionalItem>? Conditionals);
-
-record TypedefType(
-    string Declaration,
-    TypeDescription Description,
-    TypedefTypeDetails TypeDetails
-);
-
-record TypedefTypeDetails(
-    string Flavour,
-    TypedefTypeDetailsReturnType ReturnType
-);
-
-record TypedefTypeDetailsReturnType(
-    string Declaration,
-    TypedefTypeDetailsReturnTypeDescription Description
-);
-
-record TypedefTypeDetailsReturnTypeDescription();
-
-record TypedefTypeDescription(
-    string Kind,
-    string BuiltinType);
-
-record EnumItem(
-    string Name,
-    string OriginalFullyQualifiedName,
-    bool IsFlagsEnum,
-    List<EnumElement> Elements,
-    List<ConditionalItem> Conditionals
-);
-
-record EnumElement(
-    string Name,
-    string ValueExpression,
-    int Value,
-    bool IsCount,
-    bool IsInternal,
-    Comments Comments,
-    List<ConditionalItem> Conditionals
-);
-
-record Comments(string? Attached, string[]? Preceding);
-
-record ConditionalItem(
-    string Condition,
-    string Expression);
