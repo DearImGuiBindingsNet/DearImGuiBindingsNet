@@ -22,24 +22,24 @@ jobs:
         docker run --rm -i -v "${GITHUB_WORKSPACE}/cimgui:/cimgui_build" dear_bindings:v1
     - name: Verify compilation
       run: |
-        file "${GITHUB_WORKSPACE}/cimgui/cimgui.dll"
-        file "${GITHUB_WORKSPACE}/cimgui/cimgui.so"
-        file "${GITHUB_WORKSPACE}/cimgui/cimgui.dylib"
+        file ${{ github.workspace }}/cimgui/cimgui.dll
+        file ${{ github.workspace }}/cimgui/cimgui.so
+        file ${{ github.workspace }}/cimgui/cimgui.dylib
 
     - name: upload-artifacts-win-x64
       uses: actions/upload-artifact@v4.3.1
       with: 
         name: cimgui.dll
-        path: "${GITHUB_WORKSPACE}/cimgui/cimgui.dll"
+        path: ${{ github.workspace }}/cimgui/cimgui.dll
 
     - name: upload-artifacts-linux-x64
       uses: actions/upload-artifact@v4.3.1
       with: 
         name: cimgui.so
-        path: "${GITHUB_WORKSPACE}/cimgui/cimgui.so"
+        path: ${{ github.workspace }}/cimgui/cimgui.so
 
     - name: upload-artifacts-osx-arm64
       uses: actions/upload-artifact@v4.3.1
       with: 
         name: cimgui.dylib
-        path: "${GITHUB_WORKSPACE}/cimgui/cimgui.dylib"
+        path: ${{ github.workspace }}/cimgui/cimgui.dylib
