@@ -13,7 +13,13 @@ InProgress: **Managed wrapper**
 
 ## Pointer-based sample compiles and runs
 
-![image](https://github.com/DearImGuiBindingsNet/DearImGuiBindingsNet/assets/44116740/defada25-2731-442c-9813-6bb7ff1b9509)
+<p align="center">
+  <img src="https://github.com/DearImGuiBindingsNet/DearImGuiBindingsNet/assets/44116740/defada25-2731-442c-9813-6bb7ff1b9509" height="400">
+</p>
+
+## Examples
+
+Take a look at the `Example*` projects in this repo. I've personally tested them on win-x64 and osx-arm.
 
 # Building
 
@@ -22,7 +28,15 @@ InProgress: **Managed wrapper**
 ### Supported natives:
 * `win-x64`
 * `linux-x64`
-* `macos-arm` (technically, produced `dylib` should run on linux, but it's untested)
+* `osx-arm` (produced .dylib is unsigned, so your MacOS may (and probably will) prevent you from loading the lib in runtime unless you allow the execution of the .dylib in Settings)
+
+### Unsupported natives
+
+* `win-arm64`
+* `linux-arm64`
+* `osx-x64`
+
+I don't have access to those platforms, so while I can write a compilation step, I can't verify the results
 
 ### Compiling natives
 - Variant 1
@@ -31,6 +45,8 @@ InProgress: **Managed wrapper**
 - Variant 2
     * run the `dear_bindings.Dockerfile` mounting your desired output folder to `/cimgui_build`
     * example `docker run --rm -i -v "${PWD}/cimgui:/cimgui_build" dear_bindings:v1`
+- Variant 3
+    * Download latest natives build from [\"Build natives\" Action](https://github.com/DearImGuiBindingsNet/DearImGuiBindingsNet/actions/workflows/dear_bindings.yml)
 
 `cimgui.json`, `cimgui.h` and `cimgui.cpp` from running `dear_binding` are exported as well, if you need them
 
