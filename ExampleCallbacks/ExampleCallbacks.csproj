@@ -6,7 +6,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+        <RuntimeIdentifiers>win-x64;linux-x64;osx</RuntimeIdentifiers>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     </PropertyGroup>
 

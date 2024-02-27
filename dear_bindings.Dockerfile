@@ -46,27 +46,23 @@ imgui/imgui_tables.cpp \
 imgui/imgui_widgets.cpp \
 -lm
 
-FROM ubuntu:20.04 AS compile-macos-arm
-WORKDIR /cimgui
+# this section was tested on Windows and M1 Pro
+# --platform=linux/amd64 is required to run the compiler on Apple Silicon aarch64
+FROM --platform=linux/amd64 ghcr.io/shepherdjerred/macos-cross-compiler AS compile-macos-arm
+WORKDIR /workspace
 COPY --from=generator /dear_bindings .
-
-RUN apt-get update
-RUN apt-get -y install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
 # https://github.com/cimgui/cimgui/blob/master/Makefile uses -Wall, but we don't need warnings
 # https://github.com/ImGuiNET/ImGui.NET-nativebuild/blob/master/build-native.sh IMGUI_USE_WCHAR32 is not required
-RUN aarch64-linux-gnu-gcc \
+RUN aarch64-apple-darwin22-gcc \
 -std=c++11 \
-#-g \
 -shared -fPIC \
--DCIMGUI_API='extern "C"' \
 -DIMGUI_STATIC \
 -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1 \
 -O2 -fno-exceptions -fno-rtti \
 -fno-threadsafe-statics \
 -o cimgui.dylib \
 -I. \
--I/usr/local/include \
 -Iimgui \
 -x c++ cimgui.cpp \
 imgui/imgui.cpp \
@@ -105,7 +101,7 @@ imgui/imgui_widgets.cpp \
 FROM alpine AS final
 COPY --from=compile-linux /cimgui/cimgui.so /final/cimgui.so
 COPY --from=compile-windows /cimgui/cimgui.dll /final/cimgui.dll
-COPY --from=compile-macos-arm /cimgui/cimgui.dylib /final/cimgui.dylib
+COPY --from=compile-macos-arm /workspace/cimgui.dylib /final/cimgui.dylib
 COPY --from=generator /dear_bindings/cimgui.json /final/cimgui.json
 COPY --from=generator /dear_bindings/cimgui.h /final/cimgui.h
 COPY --from=generator /dear_bindings/cimgui.cpp /final/cimgui.cpp

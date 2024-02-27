@@ -27,7 +27,7 @@ ensure_folder_exists cimgui
 docker run --rm -i -v "${scriptPath}/cimgui:/cimgui_build" dear_bindings:v1
 
 echo "--- RAN ---"
-#
+
 #ensure_folder_exists 'DearImGuiGenerator/cimgui'
 #ensure_folder_exists 'DearImGuiBindings/runtimes/win-x64/native'
 #ensure_folder_exists 'DearImGuiBindings/runtimes/linux-x64/native'

@@ -40,18 +40,20 @@
         <Folder Include="generated\" />
     </ItemGroup>
     
-    <Target Name="Echo Runtime Identifier" AfterTargets="PostBuildEvent">
-        <Message Importance="high" Text=" Runtime Identifier: '$(RuntimeIdentifier)' " />
-    </Target>
-    
 <!-- Credits to ImGui.NET for this piece of code on copying natives into a build folder -->
     <PropertyGroup>
         <_IsWindows Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</_IsWindows>
         <_IsMacOS Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</_IsMacOS>
         <_IsLinux Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</_IsLinux>
+        
+        <_OsArchitecture>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_OsArchitecture>
 
-        <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsMacOS)' == 'true' And '$(PlatformTarget)' == 'x64'">osx</_NativeRuntime>
-        <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsMacOS)' == 'true' And '$(PlatformTarget)' == 'ARM64'">osx</_NativeRuntime>
+        <_IsRunningArm64 Condition=" $(_OsArchitecture) == 'Arm64' ">true</_IsRunningArm64>
+        <_IsRunningX64 Condition=" $(_OsArchitecture) == 'X64' ">true</_IsRunningX64>
+        <_IsRunningX32 Condition=" $(_OsArchitecture) == 'X32' ">true</_IsRunningX32>
+        
+        <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsMacOS)' == 'true' And '$(_IsRunningX64)' == 'true'">osx</_NativeRuntime>
+        <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsMacOS)' == 'true' And '$(_IsRunningArm64)' == 'true'">osx</_NativeRuntime>
         <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsLinux)' == 'true' And ('$(Prefer32Bit)' == 'false' Or '$(PlatformTarget)' == 'x64')">linux-x64</_NativeRuntime>
         <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsWindows)' == 'true' And ('$(Prefer32Bit)' == 'true' Or '$(PlatformTarget)' == 'x86')">win-x86</_NativeRuntime>
         <_NativeRuntime Condition=" '$(_NativeRuntime)' == '' And '$(_IsWindows)' == 'true' And ('$(Prefer32Bit)' == 'false' Or '$(PlatformTarget)' == 'x64')">win-x64</_NativeRuntime>
@@ -64,6 +66,15 @@
         <_NativeLibName Condition=" '$(RuntimeIdentifier)'=='linux-x64' ">cimgui.so</_NativeLibName>
         <_NativeLibName Condition=" '$(RuntimeIdentifier)'=='osx' ">cimgui.dylib</_NativeLibName>
     </PropertyGroup>
+    
+    <Target Name="Test" AfterTargets="PostBuildEvent">
+        <Message Importance="high" Text=" Native Runtime: '$(_NativeRuntime)' "/>
+        <Message Importance="high" Text=" OS ARCH: '$(_OsArchitecture)' "/>
+        <Message Importance="high" Text=" IsArm64: '$(_IsRunningArm64)' "/>
+        <Message Importance="high" Text=" IsX64: '$(_IsRunningX64)' "/>
+        <Message Importance="high" Text=" IsX32: '$(_IsRunningX32)' "/>
+    </Target>
+    
     <ItemGroup>
         <Content Condition="'$(_NativeRuntime)' != ''" Include="$(MSBuildThisFileDirectory)..\cimgui\$(_NativeLibName)">
             <Link>%(Filename)%(Extension)</Link>
