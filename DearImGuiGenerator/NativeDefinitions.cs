@@ -71,7 +71,8 @@ public record TypeDescription(
     string? BuiltinType,
     TypeDescription? ReturnType,
     TypeDescription? InnerType,
-    List<TypeDescription>? Parameters
+    List<TypeDescription>? Parameters,
+    List<string> StorageClasses
 );
 
 public record TypedefItem(

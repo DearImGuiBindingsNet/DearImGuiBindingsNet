@@ -16,6 +16,8 @@ public class CSharpCodePreprocessor
     private readonly List<CSharpStruct> _resultStructs = [];
     private readonly List<CSharpFunction> _resultFunctions = [];
 
+    public Dictionary<string, List<string>> GeneratedTypeMapping = new();
+
     public CSharpCodePreprocessor(
         List<CSharpConstant> globalConstants,
         List<CSharpConstant> enumConstants,
@@ -39,14 +41,57 @@ public class CSharpCodePreprocessor
     {
         var typedefDelegates = _typedefs.Where(x => x.Kind == CSharpDefinitionKind.Delegate).Cast<CSharpDelegate>();
 
-        _resultDelegates.AddRange(typedefDelegates.Where(x => !x.Arguments.Any(y => y.Type == "__arglist")));
-        _resultDelegates.AddRange(_delegates.Where(x => !x.Arguments.Any(y => y.Type == "__arglist")));
+        _delegates.AddRange(typedefDelegates);
+
+        _typedefs.RemoveAll(x => x.Kind == CSharpDefinitionKind.Delegate);
+
+        foreach (var cSharpEnum in _enums)
+        {
+            cSharpEnum.Modifiers.Add("public");
+        }
+
+        foreach (var cSharpConst in _enumConstants)
+        {
+            cSharpConst.Modifiers.Add("public");
+        }
         
-        _resultConstants.AddRange(_globalConstants);
-        _resultConstants.AddRange(_enumConstants);
+        // flatten inner declarations in structs
+        foreach (var cSharpStruct in _structs)
+        {
+            cSharpStruct.Modifiers.Add("public");
+            foreach (var cSharpDefinition in cSharpStruct.InnerDeclarations)
+            {
+                if (cSharpDefinition.Kind == CSharpDefinitionKind.Delegate)
+                {
+                    _delegates.Add((CSharpDelegate)cSharpDefinition);
+                }
+            }
+
+            cSharpStruct.InnerDeclarations.RemoveAll(x => x.Kind == CSharpDefinitionKind.Delegate);
+            
+            foreach (var sField in cSharpStruct.Fields)
+            {
+                sField.Modifiers.Add("public");
+                
+                if (sField.Type.EndsWith('*'))
+                {
+                    sField.Modifiers.Add("unsafe");
+                }
+
+                if (sField.IsArray)
+                {
+                    sField.Modifiers.Add("fixed");
+                }
+            }
+        }
         
-        _resultEnums.AddRange(_enums);
-        _resultStructs.AddRange(_structs);
-        _resultFunctions.AddRange(_functions);
+        foreach (var cSharpDelegate in _delegates)
+        {
+            cSharpDelegate.Modifiers.Add("public");
+            if (cSharpDelegate.ReturnType.EndsWith('*') || cSharpDelegate.Arguments.Any(x => x.Type.EndsWith('*')))
+            {
+                cSharpDelegate.Modifiers.Add("unsafe");
+            }
+        }
     }
 }
