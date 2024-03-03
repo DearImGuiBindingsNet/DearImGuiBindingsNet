@@ -149,6 +149,14 @@ codeWriter.WriteDelegates(delegates);
 
 codeWriter.Flush();
 
+codeWriter.WriteInlineArrays(preprocessor.InlineArrays);
+
+codeWriter.Flush();
+
+codeWriter.WriteFunctions(functions);
+
+codeWriter.Flush();
+
 int x = 5;
 
 void AttachComments(Comments? comments, CSharpDefinition definition)
@@ -585,7 +593,8 @@ string GetCSharpTypeOfDescription(TypeDescription typeDescription)
         {
             var type = typeDescription.Name!;
 
-            return type;
+            // try to find the conversion, or fallback to whats actually declared
+            return cppToSharpKnownConversions.GetValueOrDefault(type, type);
         }
         case "Pointer":
         {
@@ -1077,7 +1086,7 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
                 var cSharpType = GetCSharpTypeOfDescription(argumentType.InnerType);
 
-                var cSharpArgument = new CSharpTypedVariable(parameter.Name, cSharpType, true);
+                var cSharpArgument = new CSharpTypedVariable(argumentName, cSharpType);
                 cSharpFunction.Arguments.Add(cSharpArgument);
             }
             else if (argumentType.Kind == "Type")
@@ -1100,16 +1109,14 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
                     // delegates are always used as pointers
                     finalArgumentType = $"{delegateName}*";
                     cSharpDelegates.Add(cSharpDelegate);
+
+                    cSharpFunction.Arguments.Add(new CSharpTypedVariable(argumentName, delegateName));
                 }
                 else
                 {
                     finalArgumentType = "unknown_delegate";
                     Console.WriteLine($"Unknown Type argument {argumentType.Name}");
                 }
-
-                var cSharpType = GetCSharpTypeOfDescription(argumentType);
-
-                cSharpFunction.Arguments.Add(new CSharpTypedVariable(parameter.Name, cSharpType));
             }
             else
             {
@@ -1121,7 +1128,7 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
                 var cSharpType = GetCSharpTypeOfDescription(argumentType);
 
-                cSharpFunction.Arguments.Add(new CSharpTypedVariable(parameter.Name, cSharpType));
+                cSharpFunction.Arguments.Add(new CSharpTypedVariable(argumentName, cSharpType));
             }
 
             if (finalArgumentType == "void*")

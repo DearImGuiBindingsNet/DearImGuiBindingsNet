@@ -7,7 +7,8 @@ public class CSharpCodeWriter
     private string _currentIndent = "";
 
     const string genNamespace = "ImGui";
-    const string nativeClass = "ImGuiNative2";
+    const string constantsClass = "ImGuiConsts";
+    const string functionsClass = "ImGuiNative2";
     const string outDir = "../DearImGuiBindings/generated2";
 
     private StreamWriter _writer = null!;
@@ -67,7 +68,7 @@ public class CSharpCodeWriter
         WriteLine($"namespace {genNamespace};");
         WriteLine("");
 
-        WriteLine($"public static partial class {nativeClass}");
+        WriteLine($"public static partial class {constantsClass}");
 
         PushBlock();
 
@@ -144,6 +145,18 @@ public class CSharpCodeWriter
         }
     }
 
+    private string JoinArguments(CSharpFunction def)
+    {
+        if (def.Arguments.Count == 0)
+        {
+            return "";
+        }
+        else
+        {
+            return string.Join(", ", def.Arguments);
+        }
+    }
+
     public void WriteEnums(IEnumerable<CSharpEnum> enums)
     {
         _writer.Dispose();
@@ -157,7 +170,7 @@ public class CSharpCodeWriter
         {
             WriteSummaries(e);
 
-            WriteLine($"{JoinModifiers(e)}enum {e.Name}");
+            WriteLine($"{JoinModifiers(e)}enum {e.Name.TrimEnd('_')}");
             PushBlock();
 
             foreach (var eValue in e.Values)
@@ -179,6 +192,7 @@ public class CSharpCodeWriter
         _writer = new StreamWriter(Path.Combine(outDir, "ImGui.Structs.cs"));
 
         WriteLine($"namespace {genNamespace};");
+        WriteLine($"using static {constantsClass};");
         WriteLine("");
 
         foreach (var s in structs)
@@ -216,14 +230,77 @@ public class CSharpCodeWriter
 
         WriteLine($"namespace {genNamespace};");
         WriteLine("");
-        
+
         foreach (var cSharpDelegate in delegates)
         {
             WriteSummaries(cSharpDelegate);
-            
+
             WriteLine($"{JoinModifiers(cSharpDelegate)}delegate {cSharpDelegate.ReturnType} {cSharpDelegate.Name}({JoinArguments(cSharpDelegate)});");
-            
+
             WriteLine("");
         }
+    }
+
+    public void WriteInlineArrays(List<CSharpStruct> inlineArrays)
+    {
+        _writer.Dispose();
+
+        _writer = new StreamWriter(Path.Combine(outDir, "ImGui.InlineArrays.cs"));
+
+        WriteLine("using System.Runtime.CompilerServices;");
+        WriteLine("");
+
+        WriteLine($"namespace {genNamespace};");
+        WriteLine($"using static {constantsClass};");
+        WriteLine("");
+
+        foreach (var arr in inlineArrays)
+        {
+            WriteSummaries(arr);
+
+            WriteLines(arr.Attributes.Select(x => $"[{x}]"));
+            WriteLine($"{JoinModifiers(arr)}struct {arr.Name}");
+            PushBlock();
+
+            foreach (var sField in arr.Fields)
+            {
+                WriteSummaries(sField);
+
+                WriteLine($"{JoinModifiers(sField)}{sField.Type} {sField.Name};");
+
+                WriteLine("");
+            }
+
+            PopBlock();
+        }
+    }
+
+    public void WriteFunctions(List<CSharpFunction> functions)
+    {
+        _writer.Dispose();
+
+        _writer = new StreamWriter(Path.Combine(outDir, "ImGui.Functions.cs"));
+        
+        WriteLine("using System.Runtime.InteropServices;");
+        WriteLine("");
+
+        WriteLine($"namespace {genNamespace};");
+        WriteLine($"using static {constantsClass};");
+        WriteLine("");
+        
+        WriteLine($"public static class {functionsClass}");
+        
+        PushBlock();
+        
+        foreach (var func in functions)
+        {
+            WriteSummaries(func);
+
+            WriteLines(func.Attributes.Select(x => $"[{x}]"));
+            WriteLine($"{JoinModifiers(func)}{func.ReturnType} {func.Name}({JoinArguments(func)});");
+            WriteLine("");
+        }
+        
+        PopBlock();
     }
 }

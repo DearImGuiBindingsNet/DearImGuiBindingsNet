@@ -2,6 +2,8 @@
 
 public abstract record CSharpDefinition(string Name, CSharpDefinitionKind Kind)
 {
+    public string Name { get; set; } = Name;
+    
     /// <summary>
     /// Raw modifiers ex: public, static, unsafe etc.
     /// </summary>
@@ -68,6 +70,8 @@ public record CSharpClass(string Name) : CSharpContainerType(Name, CSharpDefinit
 public record CSharpFunction(string Name, string ReturnType) : CSharpDefinition(Name, CSharpDefinitionKind.Function)
 {
     public List<CSharpTypedVariable> Arguments { get; private set; } = [];
+
+    public string ReturnType { get; set; } = ReturnType;
     
     public override string ToString()
     {
@@ -87,6 +91,11 @@ public record CSharpDelegate(string Name, string ReturnType) : CSharpDefinition(
 
 public record CSharpTypedVariable(string Name, string Type, bool IsArray = false, string ArrayBound = "") : CSharpDefinition(Name, CSharpDefinitionKind.Variable)
 {
+    public string Type { get; set; } = Type;
+    public bool IsArray { get; set; } = IsArray;
+
+    public string ArrayBound { get; set; } = ArrayBound;
+    
     public override string ToString()
     {
         return $"{Type} {Name}{(IsArray ? $"[{ArrayBound}]" : "")}";
