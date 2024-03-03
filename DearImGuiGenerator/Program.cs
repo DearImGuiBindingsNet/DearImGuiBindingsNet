@@ -7,11 +7,9 @@ const string nativeClass = "ImGuiNative";
 
 const string outDir = "../DearImGuiBindings/generated";
 
-var sharpClass = new CSharpClass(nativeClass);
-
 Dictionary<string, string> knownDefines = new()
 {
-    ["CIMGUI_API"] = "extern \"C\" __declspec(dllexport)",
+    // ["CIMGUI_API"] = "extern \"C\" __declspec(dllexport)",
     ["IMGUI_DISABLE_OBSOLETE_FUNCTIONS"] = "",
     ["IMGUI_DISABLE_OBSOLETE_KEYIO"] = ""
 };
@@ -133,6 +131,32 @@ var preprocessor = new CSharpCodePreprocessor(
 
 preprocessor.Preprocess();
 
+var codeWriter = new CSharpCodeWriter();
+
+codeWriter.WriteConsts(constants.Concat(enumsConstants));
+
+codeWriter.Flush();
+
+codeWriter.WriteEnums(enums);
+
+codeWriter.Flush();
+
+codeWriter.WriteStructs(structs);
+
+codeWriter.Flush();
+
+codeWriter.WriteDelegates(delegates);
+
+codeWriter.Flush();
+
+codeWriter.WriteInlineArrays(preprocessor.InlineArrays);
+
+codeWriter.Flush();
+
+codeWriter.WriteFunctions(functions);
+
+codeWriter.Flush();
+
 int x = 5;
 
 void AttachComments(Comments? comments, CSharpDefinition definition)
@@ -193,6 +217,11 @@ List<CSharpConstant> WriteDefines(List<DefineItem> defines)
     var defineGroups = defines.GroupBy(x => x.Conditionals?.Count ?? 0);
 
     List<CSharpConstant> cSharpConstants = [];
+    
+    foreach (var key in knownDefines.Keys)
+    {
+        cSharpConstants.Add(new CSharpConstant(key, "string", $"\"{knownDefines[key].Replace("\"", "\\\"")}\""));
+    }
     
     foreach (var group in defineGroups)
     {
@@ -334,7 +363,7 @@ CSharpConstant? WriteSingleDefine(DefineItem defineItem, StreamWriter streamWrit
         streamWriter.WriteLine($"\t// public const string {defineItem.Name} = {defineItem.Content};");
         Console.WriteLine($"Unknown define type: {defineItem.Content}");
         
-        return new CSharpConstant(defineItem.Name, "string", defineItem.Content);
+        return new CSharpConstant(defineItem.Name, "bool", "true");
     }
 }
 
@@ -564,7 +593,8 @@ string GetCSharpTypeOfDescription(TypeDescription typeDescription)
         {
             var type = typeDescription.Name!;
 
-            return type;
+            // try to find the conversion, or fallback to whats actually declared
+            return cppToSharpKnownConversions.GetValueOrDefault(type, type);
         }
         case "Pointer":
         {
@@ -636,8 +666,6 @@ CSharpDefinition? SaveTypeConversion(StreamWriter writer, TypeDescription typeDe
             }
 
             return new CSharpTypeReassignment(sourceType, type);
-
-            break;
         }
         case "Pointer":
         {
@@ -655,16 +683,7 @@ CSharpDefinition? SaveTypeConversion(StreamWriter writer, TypeDescription typeDe
 
             var unmodifiedType = GetCSharpTypeOfDescription(innerType);
 
-            if (unmodifiedType is not null)
-            {
-                return new CSharpTypeReassignment(sourceType, $"{unmodifiedType}*");
-            }
-            else
-            {
-                Console.WriteLine("CSHARPCODEGEN: Failed to determine type of pointer");
-            }
-
-            break;
+            return new CSharpTypeReassignment(sourceType, $"{unmodifiedType}*");
         }
         case "Type":
         {
@@ -900,8 +919,12 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
                 var cSharpType = GetCSharpTypeOfDescription(fieldType);
 
-                var cSharpField = new CSharpTypedVariable(field.Name, cSharpType);
-                AttachComments(field.Comments, cSharpStruct);
+                var cSharpField = new CSharpTypedVariable(field.Name, cSharpType)
+                {
+                    IsArray = true,
+                    ArrayBound = field.ArrayBounds??""
+                };
+                AttachComments(field.Comments, cSharpField);
 
                 cSharpStruct.Fields.Add(cSharpField);
             }
@@ -930,8 +953,8 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
                     cSharpStruct.InnerDeclarations.Add(cSharpDelegate);
 
-                    var cSharpType = GetCSharpTypeOfDescription(fieldType.InnerType!);
-                    var cSharpField = new CSharpTypedVariable(field.Name, cSharpType);
+                    var cSharpType = GetCSharpTypeOfDescription(fieldType);
+                    var cSharpField = new CSharpTypedVariable(field.Name, cSharpType + "*");
                     AttachComments(field.Comments, cSharpField);
 
                     cSharpStruct.Fields.Add(cSharpField);
@@ -1063,7 +1086,7 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
                 var cSharpType = GetCSharpTypeOfDescription(argumentType.InnerType);
 
-                var cSharpArgument = new CSharpTypedVariable(parameter.Name, cSharpType, true);
+                var cSharpArgument = new CSharpTypedVariable(argumentName, cSharpType);
                 cSharpFunction.Arguments.Add(cSharpArgument);
             }
             else if (argumentType.Kind == "Type")
@@ -1086,16 +1109,14 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
                     // delegates are always used as pointers
                     finalArgumentType = $"{delegateName}*";
                     cSharpDelegates.Add(cSharpDelegate);
+
+                    cSharpFunction.Arguments.Add(new CSharpTypedVariable(argumentName, delegateName));
                 }
                 else
                 {
                     finalArgumentType = "unknown_delegate";
                     Console.WriteLine($"Unknown Type argument {argumentType.Name}");
                 }
-
-                var cSharpType = GetCSharpTypeOfDescription(argumentType);
-
-                cSharpFunction.Arguments.Add(new CSharpTypedVariable(parameter.Name, cSharpType));
             }
             else
             {
@@ -1107,7 +1128,7 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
                 var cSharpType = GetCSharpTypeOfDescription(argumentType);
 
-                cSharpFunction.Arguments.Add(new CSharpTypedVariable(parameter.Name, cSharpType));
+                cSharpFunction.Arguments.Add(new CSharpTypedVariable(argumentName, cSharpType));
             }
 
             if (finalArgumentType == "void*")

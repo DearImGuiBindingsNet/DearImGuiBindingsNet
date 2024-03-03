@@ -35,10 +35,6 @@
             <Visible>false</Visible>
         </Content>
     </ItemGroup>
-
-    <ItemGroup>
-        <Folder Include="generated\" />
-    </ItemGroup>
     
 <!-- Credits to ImGui.NET for this piece of code on copying natives into a build folder -->
     <PropertyGroup>
