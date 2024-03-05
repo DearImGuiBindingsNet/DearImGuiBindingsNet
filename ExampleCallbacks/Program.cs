@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 using ImGui;
-using static ImGui.ImGuiNative2;
+using static ImGui.ImGuiNative;
 
 unsafe
 {

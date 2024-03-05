@@ -8,8 +8,8 @@ public class CSharpCodeWriter
 
     const string genNamespace = "ImGui";
     const string constantsClass = "ImGuiConsts";
-    const string functionsClass = "ImGuiNative2";
-    const string outDir = "../DearImGuiBindings/generated2";
+    const string functionsClass = "ImGuiNative";
+    const string outDir = "../DearImGuiBindings/generated";
 
     private StreamWriter _writer = null!;
 
