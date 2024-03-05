@@ -46,15 +46,15 @@ public class CSharpCodePreprocessor
             .ToList();
     }
 
-    private string? RecursiveTryGetTypeReassignment(string type)
+    private CSharpType? RecursiveTryGetTypeReassignment(CSharpType type)
     {
-        if (type.EndsWith('*'))
+        if (type.IsPointer)
         {
-            var reassign = RecursiveTryGetTypeReassignment(type[..^1]);
+            var reassign = RecursiveTryGetTypeReassignment(type.InnerType);
 
             if (reassign is not null)
             {
-                return reassign + "*";
+                return new CSharpPointerType(reassign);
             }
             else
             {
@@ -62,7 +62,7 @@ public class CSharpCodePreprocessor
             }
         }
 
-        var reassignment = _typeReassignments.FirstOrDefault(x => x.Name == type);
+        var reassignment = _typeReassignments.FirstOrDefault(x => x.Type.GetPrimitiveType() == type.GetPrimitiveType());
         if (reassignment is not null)
         {
             return RecursiveTryGetTypeReassignment(reassignment.AnotherType);
@@ -117,18 +117,18 @@ public class CSharpCodePreprocessor
                 var redefinedType = RecursiveTryGetTypeReassignment(sField.Type);
                 if (redefinedType is not null && redefinedType != sField.Type)
                 {
-                    sField.PrecedingComment ??= [..sField.PrecedingComment ?? [], $"Original type: {sField.Type}"];
+                    sField.PrecedingComment ??= [..sField.PrecedingComment ?? [], $"Original type: {sField.Type.ToCSharpCode()}"];
                     sField.Type = redefinedType;
                 }
 
-                if (sField.Type.EndsWith('*'))
+                if (sField.Type.IsPointer)
                 {
                     sField.Modifiers.Add("unsafe");
                 }
 
                 if (sField.IsArray)
                 {
-                    if (IsSimpleType(sField.Type))
+                    if (IsSimpleType(sField.Type.GetPrimitiveType()))
                     {
                         sField.Modifiers.Add("unsafe");
                         sField.Modifiers.Add("fixed");
@@ -138,7 +138,7 @@ public class CSharpCodePreprocessor
 
                         // if there is no global constant with the provided name - then it's not an int
                         // if there is a global constant with the provided name, but it's type is not int - then it's not an int
-                        bool needsCastToInt = globalConstant is null || globalConstant.Type != "int";
+                        bool needsCastToInt = globalConstant is null || globalConstant.Type.GetPrimitiveType() != "int";
 
                         // if there is a enum constant (e.g. enum value) with the given name - then the bound doesn't require a cast
                         if (enumConstant is not null)
@@ -181,7 +181,7 @@ public class CSharpCodePreprocessor
 
                             // if there is no global constant with the provided name - then it's not an int
                             // if there is a global constant with the provided name, but it's type is not int - then it's not an int
-                            bool needsCastToInt = globalConstant is null || globalConstant.Type != "int";
+                            bool needsCastToInt = globalConstant is null || globalConstant.Type.GetPrimitiveType() != "int";
 
                             // if there is a enum constant (e.g. enum value) with the given name - then the bound doesn't require a cast
                             if (enumConstant is not null)
@@ -207,7 +207,7 @@ public class CSharpCodePreprocessor
 
                         InlineArrays.Add(inlineArray);
 
-                        sField.Type = inlineArrayType;
+                        sField.Type = new CSharpPrimitiveType(inlineArrayType);
                         sField.IsArray = false;
                     }
                 }
@@ -218,13 +218,13 @@ public class CSharpCodePreprocessor
         {
             sDelegate.Attributes.Add("UnmanagedFunctionPointer(CallingConvention.Cdecl)");
             sDelegate.Modifiers.Add("public");
-            if (sDelegate.ReturnType.EndsWith('*') || sDelegate.Arguments.Any(x => x.Type.EndsWith('*')))
+            if (sDelegate.ReturnType.IsPointer || sDelegate.Arguments.Any(x => x.Type.IsPointer))
             {
                 sDelegate.Modifiers.Add("unsafe");
             }
         }
 
-        _functions.RemoveAll(x => x.Arguments.Any(y => y.Type == "__arglist"));
+        _functions.RemoveAll(x => x.Arguments.Any(y => y.Type.GetPrimitiveType() == "__arglist"));
         
         foreach (var sFunc in _functions)
         {
@@ -235,11 +235,11 @@ public class CSharpCodePreprocessor
             var returnTypeRedefinedType = RecursiveTryGetTypeReassignment(sFunc.ReturnType);
             if (returnTypeRedefinedType is not null && returnTypeRedefinedType != sFunc.ReturnType)
             {
-                sFunc.PrecedingComment = [..sFunc.PrecedingComment ?? [], $"ReturnType original type: {sFunc.ReturnType}"];
+                sFunc.PrecedingComment = [..sFunc.PrecedingComment ?? [], $"ReturnType original type: {sFunc.ReturnType.ToCSharpCode()}"];
                 sFunc.ReturnType = returnTypeRedefinedType;
             }
             
-            if (sFunc.ReturnType.EndsWith('*'))
+            if (sFunc.ReturnType.IsPointer)
             {
                 sFunc.Modifiers.Add("unsafe");
             }
@@ -251,11 +251,11 @@ public class CSharpCodePreprocessor
                 var redefinedType = RecursiveTryGetTypeReassignment(sArg.Type);
                 if (redefinedType is not null && redefinedType != sArg.Type)
                 {
-                    sFunc.PrecedingComment = [..sFunc.PrecedingComment ?? [], $"Param {sArg.Name} original type: {sArg.Type}"];
+                    sFunc.PrecedingComment = [..sFunc.PrecedingComment ?? [], $"Param {sArg.Name} original type: {sArg.Type.ToCSharpCode()}"];
                     sArg.Type = redefinedType;
                 }
 
-                if (sArg.Type.EndsWith('*') && sFunc.Modifiers[^1] != "unsafe")
+                if (sArg.Type.IsPointer && sFunc.Modifiers[^1] != "unsafe")
                 {
                     sFunc.Modifiers.Add("unsafe");
                 }

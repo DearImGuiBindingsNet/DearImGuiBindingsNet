@@ -76,7 +76,7 @@ public class CSharpCodeWriter
         {
             WriteSummaries(sharpConstant);
 
-            WriteLine($"public const {sharpConstant.Type} {sharpConstant.Name} = {sharpConstant.Value};");
+            WriteLine($"public const {sharpConstant.Type.ToCSharpCode()} {sharpConstant.Name} = {sharpConstant.Value};");
             WriteLine("");
         }
 
@@ -141,7 +141,7 @@ public class CSharpCodeWriter
         }
         else
         {
-            return string.Join(", ", def.Arguments);
+            return string.Join(", ", def.Arguments.Select(x => $"{x.Type.ToCSharpCode()} {x.Name}"));
         }
     }
 
@@ -153,7 +153,7 @@ public class CSharpCodeWriter
         }
         else
         {
-            return string.Join(", ", def.Arguments);
+            return string.Join(", ", def.Arguments.Select(x => $"{x.Type.ToCSharpCode()} {x.Name}"));
         }
     }
 
@@ -208,11 +208,11 @@ public class CSharpCodeWriter
 
                 if (sField.IsArray)
                 {
-                    WriteLine($"{JoinModifiers(sField)}{sField.Type} {sField.Name}[{sField.ArrayBound}];");
+                    WriteLine($"{JoinModifiers(sField)}{sField.Type.ToCSharpCode()} {sField.Name}[{sField.ArrayBound}];");
                 }
                 else
                 {
-                    WriteLine($"{JoinModifiers(sField)}{sField.Type} {sField.Name};");
+                    WriteLine($"{JoinModifiers(sField)}{sField.Type.ToCSharpCode()} {sField.Name};");
                 }
 
                 WriteLine("");
@@ -238,7 +238,7 @@ public class CSharpCodeWriter
             WriteSummaries(cSharpDelegate);
 
             WriteLines(cSharpDelegate.Attributes.Select(x => $"[{x}]"));
-            WriteLine($"{JoinModifiers(cSharpDelegate)}delegate {cSharpDelegate.ReturnType} {cSharpDelegate.Name}({JoinArguments(cSharpDelegate)});");
+            WriteLine($"{JoinModifiers(cSharpDelegate)}delegate {cSharpDelegate.ReturnType.ToCSharpCode()} {cSharpDelegate.Name}({JoinArguments(cSharpDelegate)});");
 
             WriteLine("");
         }
@@ -269,7 +269,7 @@ public class CSharpCodeWriter
             {
                 WriteSummaries(sField);
 
-                WriteLine($"{JoinModifiers(sField)}{sField.Type} {sField.Name};");
+                WriteLine($"{JoinModifiers(sField)}{sField.Type.ToCSharpCode()} {sField.Name};");
 
                 WriteLine("");
             }
@@ -300,7 +300,7 @@ public class CSharpCodeWriter
             WriteSummaries(func);
 
             WriteLines(func.Attributes.Select(x => $"[{x}]"));
-            WriteLine($"{JoinModifiers(func)}{func.ReturnType} {func.Name}({JoinArguments(func)});");
+            WriteLine($"{JoinModifiers(func)}{func.ReturnType.ToCSharpCode()} {func.Name}({JoinArguments(func)});");
             WriteLine("");
         }
 

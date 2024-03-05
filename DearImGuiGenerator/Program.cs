@@ -170,7 +170,7 @@ List<CSharpConstant> WriteDefines(List<DefineItem> defines)
     
     foreach (var key in knownDefines.Keys)
     {
-        cSharpConstants.Add(new CSharpConstant(key, "string", $"\"{knownDefines[key].Replace("\"", "\\\"")}\""));
+        cSharpConstants.Add(new CSharpConstant(key, new CSharpPrimitiveType("string"), $"\"{knownDefines[key].Replace("\"", "\\\"")}\""));
     }
     
     foreach (var group in defineGroups)
@@ -243,11 +243,11 @@ CSharpConstant WriteSingleDefine(DefineItem defineItem)
 {
     if (string.IsNullOrEmpty(defineItem.Content))
     {
-        return new CSharpConstant(defineItem.Name, "bool", "true");
+        return new CSharpConstant(defineItem.Name, new CSharpPrimitiveType("bool"), "true");
     }
     else if (knownDefines.ContainsKey(defineItem.Content))
     {
-        return new CSharpConstant(defineItem.Name, "bool", defineItem.Content);
+        return new CSharpConstant(defineItem.Name, new CSharpPrimitiveType("bool"), defineItem.Content);
     }
     else if (defineItem.Content.StartsWith("0x") &&
              long.TryParse(
@@ -259,15 +259,15 @@ CSharpConstant WriteSingleDefine(DefineItem defineItem)
              long.TryParse(defineItem.Content, out _)
             )
     {
-        return new CSharpConstant(defineItem.Name, "long", defineItem.Content);
+        return new CSharpConstant(defineItem.Name, new CSharpPrimitiveType("long"), defineItem.Content);
     }
     else if (defineItem.Content.StartsWith('\"') && defineItem.Content.EndsWith('\"'))
     {
-        return new CSharpConstant(defineItem.Name, "string", defineItem.Content);
+        return new CSharpConstant(defineItem.Name, new CSharpPrimitiveType("string"), defineItem.Content);
     }
     else
     {
-        return new CSharpConstant(defineItem.Name, "bool", "true");
+        return new CSharpConstant(defineItem.Name, new CSharpPrimitiveType("bool"), "true");
     }
 }
 
@@ -336,7 +336,7 @@ List<CSharpConstant> WriteEnumsRaw(List<EnumItem> enums)
 
             var enumElementName = enumElement.Name;
 
-            var cSharpConstant = new CSharpConstant(enumElementName, "int", enumElement.Value.ToString());
+            var cSharpConstant = new CSharpConstant(enumElementName, new CSharpPrimitiveType("int"), enumElement.Value.ToString());
             AttachComments(enumElement.Comments, cSharpConstant);
             
             cSharpConstants.Add(cSharpConstant);
@@ -378,7 +378,7 @@ List<CSharpDefinition> WriteTypedefs2(List<TypedefItem> typedefs)
     return cSharpDefinitions;
 }
 
-string GetCSharpTypeOfDescription(TypeDescription typeDescription)
+CSharpType GetCSharpTypeOfDescription(TypeDescription typeDescription)
 {
     switch (typeDescription.Kind)
     {
@@ -386,20 +386,20 @@ string GetCSharpTypeOfDescription(TypeDescription typeDescription)
         {
             var type = typeDescription.BuiltinType!;
 
-            return cppToSharpKnownConversions.GetValueOrDefault(type, "unknown");
+            return new CSharpPrimitiveType(cppToSharpKnownConversions.GetValueOrDefault(type, "unknown"));
         }
         case "User":
         {
             var type = typeDescription.Name!;
 
             // try to find the conversion, or fallback to whats actually declared
-            return cppToSharpKnownConversions.GetValueOrDefault(type, type);
+            return new CSharpPrimitiveType(cppToSharpKnownConversions.GetValueOrDefault(type, type));
         }
         case "Pointer":
         {
             var innerType = typeDescription.InnerType!;
 
-            return GetCSharpTypeOfDescription(innerType) + "*";
+            return new CSharpPointerType(GetCSharpTypeOfDescription(innerType));
         }
         case "Type":
         {
@@ -409,14 +409,14 @@ string GetCSharpTypeOfDescription(TypeDescription typeDescription)
 
             if (innerType.Kind == "Pointer" && innerType.InnerType!.Kind == "Function")
             {
-                return name + "Delegate";
+                return new CSharpPrimitiveType(name + "Delegate");
             }
 
-            return "unknown";
+            return new CSharpPrimitiveType("unknown");
         }
     }
 
-    return "unknown";
+    return new CSharpPrimitiveType("unknown");
 }
 
 CSharpDefinition? SaveTypeConversion(TypeDescription typeDescription, string sourceType)
@@ -429,7 +429,7 @@ CSharpDefinition? SaveTypeConversion(TypeDescription typeDescription, string sou
 
             if (cppToSharpKnownConversions.TryGetValue(type, out var cSharpType))
             {
-                return new CSharpTypeReassignment(sourceType, cSharpType);
+                return new CSharpTypeReassignment(new CSharpPrimitiveType(sourceType), new CSharpPrimitiveType(cSharpType));
             }
 
             break;
@@ -439,7 +439,7 @@ CSharpDefinition? SaveTypeConversion(TypeDescription typeDescription, string sou
             // for user types we should write them as is, because they can define anything from int to function ptr
             var type = typeDescription.Name!;
 
-            return new CSharpTypeReassignment(sourceType, type);
+            return new CSharpTypeReassignment(new CSharpPrimitiveType(sourceType), new CSharpPrimitiveType(type));
         }
         case "Pointer":
         {
@@ -447,7 +447,7 @@ CSharpDefinition? SaveTypeConversion(TypeDescription typeDescription, string sou
 
             var unmodifiedType = GetCSharpTypeOfDescription(innerType);
 
-            return new CSharpTypeReassignment(sourceType, $"{unmodifiedType}*");
+            return new CSharpTypeReassignment(new CSharpPrimitiveType(sourceType), new CSharpPointerType(unmodifiedType));
         }
         case "Type":
         {
@@ -564,7 +564,7 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
                     cSharpStruct.InnerDeclarations.Add(cSharpDelegate);
 
                     var cSharpType = GetCSharpTypeOfDescription(fieldType);
-                    var cSharpField = new CSharpTypedVariable(field.Name, cSharpType + "*");
+                    var cSharpField = new CSharpTypedVariable(field.Name, new CSharpPointerType(cSharpType));
                     AttachComments(field.Comments, cSharpField);
 
                     cSharpStruct.Fields.Add(cSharpField);
@@ -650,7 +650,9 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
                     cSharpDelegates.Add(cSharpDelegate);
 
-                    cSharpFunction.Arguments.Add(new CSharpArgument(argumentName, delegateName));
+                    var delegateType = new CSharpPrimitiveType(delegateName);
+
+                    cSharpFunction.Arguments.Add(new CSharpArgument(argumentName, delegateType));
                 }
                 else
                 {

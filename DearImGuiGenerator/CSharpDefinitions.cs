@@ -1,4 +1,6 @@
-﻿namespace DearImguiGenerator;
+﻿using System.Diagnostics.CodeAnalysis;
+
+namespace DearImguiGenerator;
 
 public abstract record CSharpDefinition(string Name, CSharpDefinitionKind Kind)
 {
@@ -67,11 +69,11 @@ public record CSharpClass(string Name) : CSharpContainerType(Name, CSharpDefinit
     }
 }
 
-public record CSharpFunction(string Name, string ReturnType) : CSharpDefinition(Name, CSharpDefinitionKind.Function)
+public record CSharpFunction(string Name, CSharpType ReturnType) : CSharpDefinition(Name, CSharpDefinitionKind.Function)
 {
     public List<CSharpArgument> Arguments { get; private set; } = [];
 
-    public string ReturnType { get; set; } = ReturnType;
+    public CSharpType ReturnType { get; set; } = ReturnType;
     
     public override string ToString()
     {
@@ -79,7 +81,7 @@ public record CSharpFunction(string Name, string ReturnType) : CSharpDefinition(
     }
 }
 
-public record CSharpDelegate(string Name, string ReturnType) : CSharpDefinition(Name, CSharpDefinitionKind.Delegate)
+public record CSharpDelegate(string Name, CSharpType ReturnType) : CSharpDefinition(Name, CSharpDefinitionKind.Delegate)
 {
     public List<CSharpArgument> Arguments { get; private set; } = [];
     
@@ -89,9 +91,9 @@ public record CSharpDelegate(string Name, string ReturnType) : CSharpDefinition(
     }
 }
 
-public record CSharpTypedVariable(string Name, string Type, bool IsArray = false, string ArrayBound = "") : CSharpDefinition(Name, CSharpDefinitionKind.Variable)
+public record CSharpTypedVariable(string Name, CSharpType Type, bool IsArray = false, string ArrayBound = "") : CSharpDefinition(Name, CSharpDefinitionKind.Variable)
 {
-    public string Type { get; set; } = Type;
+    public CSharpType Type { get; set; } = Type;
     public bool IsArray { get; set; } = IsArray;
 
     public string ArrayBound { get; set; } = ArrayBound;
@@ -102,9 +104,9 @@ public record CSharpTypedVariable(string Name, string Type, bool IsArray = false
     }
 }
 
-public record CSharpArgument(string Name, string Type, bool IsArray = false, string ArrayBound = "") : CSharpDefinition(Name, CSharpDefinitionKind.Variable)
+public record CSharpArgument(string Name, CSharpType Type, bool IsArray = false, string ArrayBound = "") : CSharpDefinition(Name, CSharpDefinitionKind.Variable)
 {
-    public string Type { get; set; } = Type;
+    public CSharpType Type { get; set; } = Type;
     public bool IsArray { get; set; } = IsArray;
 
     public string ArrayBound { get; set; } = ArrayBound;
@@ -128,7 +130,7 @@ public record CSharpNamedValue(string Name, string Value) : CSharpDefinition(Nam
     }
 }
 
-public record CSharpConstant(string Name, string Type, string Value) : CSharpTypedVariable(Name, Type)
+public record CSharpConstant(string Name, CSharpType Type, string Value) : CSharpTypedVariable(Name, Type)
 {
     public override string ToString()
     {
@@ -136,11 +138,64 @@ public record CSharpConstant(string Name, string Type, string Value) : CSharpTyp
     }
 }
 
-public record CSharpTypeReassignment(string Name, string AnotherType) : CSharpDefinition(Name, CSharpDefinitionKind.TypeReassignment)
+public record CSharpTypeReassignment(CSharpType Type, CSharpType AnotherType) : CSharpDefinition("reassignment", CSharpDefinitionKind.TypeReassignment)
 {
     public override string ToString()
     {
         return $"{Name} = {AnotherType}";
+    }
+}
+
+public abstract record CSharpType()
+{
+    public abstract string GetPrimitiveType();
+
+    public abstract string ToCSharpCode();
+    
+    public abstract bool IsPointer { get; }
+
+    public abstract CSharpType InnerType { get; protected set; }
+};
+
+public record CSharpPrimitiveType(string Type) : CSharpType()
+{
+    public override string GetPrimitiveType()
+    {
+        return Type;
+    }
+
+    public override string ToCSharpCode()
+    {
+        return Type;
+    }
+
+    public override bool IsPointer { get; } = false;
+    public override CSharpType InnerType
+    {
+        get => throw new InvalidOperationException("No inner type on primitive");
+        protected set => throw new InvalidOperationException("No inner type can be set to a primitive");
+    }
+}
+
+public record CSharpPointerType : CSharpType
+{
+    public override CSharpType InnerType { get; protected set; }
+
+    public override string ToCSharpCode()
+    {
+        return InnerType.ToCSharpCode() + "*";
+    }
+
+    public override bool IsPointer { get; } = true;
+
+    public CSharpPointerType(CSharpType innerType)
+    {
+        InnerType = innerType;
+    }
+
+    public override string GetPrimitiveType()
+    {
+        return InnerType.GetPrimitiveType();
     }
 }
 
