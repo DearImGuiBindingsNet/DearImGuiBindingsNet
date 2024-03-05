@@ -49,7 +49,7 @@ Dictionary<string, string> cppToSharpKnownConversions = new()
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing Defines");
 Console.WriteLine("---------------------");
-var constants = WriteDefines(definitions.Defines);
+var constants = WriteDefines(definitions!.Defines);
 
 Console.WriteLine("---------------------");
 Console.WriteLine("Writing EnumsRaw");
@@ -118,8 +118,6 @@ codeWriter.WriteFunctions(functions);
 
 codeWriter.Flush();
 
-int x = 5;
-
 void AttachComments(Comments? comments, CSharpDefinition definition)
 {
     string? trailingComment = null;
@@ -152,7 +150,6 @@ bool EvalConditionals(List<ConditionalItem>? conditionals)
         }
         else
         {
-            bool result = true;
             var condition = conditionals[1];
             return ((condition.Condition == "ifdef" && knownDefines.ContainsKey(condition.Expression)) ||
                     (condition.Condition == "ifndef" && !knownDefines.ContainsKey(condition.Expression)));
@@ -184,15 +181,8 @@ List<CSharpConstant> WriteDefines(List<DefineItem> defines)
             {
                 var constant = WriteSingleDefine(define);
 
-                if (constant is not null)
-                {
-                    AttachComments(define.Comments, constant);
-                    cSharpConstants.Add(constant);
-                }
-                else
-                {
-                    Console.WriteLine($"Failed to convert {define.Name} into C# definition");
-                }
+                AttachComments(define.Comments, constant);
+                cSharpConstants.Add(constant);
 
                 knownDefines[define.Name] = define.Content ?? "";
             }
@@ -205,15 +195,8 @@ List<CSharpConstant> WriteDefines(List<DefineItem> defines)
                 if (condition)
                 {
                     var constant = WriteSingleDefine(define);
-                    if (constant is not null)
-                    {
-                        AttachComments(define.Comments, constant);
-                        cSharpConstants.Add(constant);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Failed to convert {define.Name} into C# definition");
-                    }
+                    AttachComments(define.Comments, constant);
+                    cSharpConstants.Add(constant);
 
                     knownDefines[define.Name] = define.Content ?? "";
                 }
@@ -229,21 +212,14 @@ List<CSharpConstant> WriteDefines(List<DefineItem> defines)
             foreach (var define in group)
             {
                 var condition = EvalConditionals(
-                    define.Conditionals.Skip(group.Key - 1)
+                    define.Conditionals!.Skip(group.Key - 1)
                         .ToList()
                 );
                 if (condition)
                 {
                     var constant = WriteSingleDefine(define);
-                    if (constant is not null)
-                    {
-                        AttachComments(define.Comments, constant);
-                        cSharpConstants.Add(constant);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Failed to convert {define.Name} into C# definition");
-                    }
+                    AttachComments(define.Comments, constant);
+                    cSharpConstants.Add(constant);
 
                     newDefines[define.Name] = define.Content ?? "";
                 }
@@ -263,7 +239,7 @@ List<CSharpConstant> WriteDefines(List<DefineItem> defines)
     return cSharpConstants;
 }
 
-CSharpConstant? WriteSingleDefine(DefineItem defineItem)
+CSharpConstant WriteSingleDefine(DefineItem defineItem)
 {
     if (string.IsNullOrEmpty(defineItem.Content))
     {
@@ -278,9 +254,9 @@ CSharpConstant? WriteSingleDefine(DefineItem defineItem)
                  defineItem.Content.Substring(2),
                  NumberStyles.HexNumber,
                  NumberFormatInfo.InvariantInfo,
-                 out var parsed
+                 out _
              ) ||
-             long.TryParse(defineItem.Content, out parsed)
+             long.TryParse(defineItem.Content, out _)
             )
     {
         return new CSharpConstant(defineItem.Name, "long", defineItem.Content);
@@ -307,8 +283,6 @@ List<CSharpEnum> WriteEnums(List<EnumItem> enums)
             continue;
         }
 
-        var name = enumDecl.Name.TrimEnd('_');
-
         var cSharpEnum = new CSharpEnum(enumDecl.Name);
         
         AttachComments(enumDecl.Comments, cSharpEnum);
@@ -318,7 +292,7 @@ List<CSharpEnum> WriteEnums(List<EnumItem> enums)
             cSharpEnum.Attributes.Add("Flags");
         }
 
-        foreach (var (enumElement, index) in enumDecl.Elements.Select((x, i) => (x, i)))
+        foreach (var enumElement in enumDecl.Elements)
         {
             if (!EvalConditionals(enumElement.Conditionals))
             {
@@ -352,7 +326,7 @@ List<CSharpConstant> WriteEnumsRaw(List<EnumItem> enums)
             continue;
         }
 
-        foreach (var (enumElement, index) in enumDecl.Elements.Select((x, i) => (x, i)))
+        foreach (var enumElement in enumDecl.Elements)
         {
             if (enumElement.Conditionals is {Count: > 0} && !EvalConditionals(enumElement.Conditionals))
             {
@@ -381,13 +355,6 @@ List<CSharpDefinition> WriteTypedefs2(List<TypedefItem> typedefs)
         {
             Console.WriteLine($"Skipping typedef {typedef.Name}, because it's conditionals evaluated to false");
             continue;
-        }
-
-        string? summary = null;
-
-        if (typedef.Comments?.Attached is not null)
-        {
-            summary = ConvertAttachedToSummary(typedef.Comments.Attached, "\t");
         }
 
         var typeDescription = typedef.Type.Description;
@@ -487,7 +454,7 @@ CSharpDefinition? SaveTypeConversion(TypeDescription typeDescription, string sou
             // this is most possibly a delegate
             var innerType = typeDescription.InnerType!;
 
-            var name = typeDescription.Name;
+            var name = typeDescription.Name!;
 
             if (innerType.Kind == "Pointer" && innerType.InnerType!.Kind == "Function")
             {
@@ -637,23 +604,13 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
         var functionName = functionItem.Name;
 
-        bool requiresUnsafe = false;
-
-        string returnType = functionItem.ReturnType!.Declaration;
-
         var cSharpReturnType = GetCSharpTypeOfDescription(functionItem.ReturnType!.Description);
 
         var cSharpFunction = new CSharpFunction(functionName, cSharpReturnType);
         
         AttachComments(functionItem.Comments, cSharpFunction);
 
-        if (functionItem.ReturnType!.Description.Kind == "Pointer")
-        {
-            requiresUnsafe = true;
-        }
-
-        List<string> parameters = new();
-        foreach (var parameter in functionItem.Arguments!)
+        foreach (var parameter in functionItem.Arguments)
         {
             var argumentName = parameter.Name;
 
@@ -669,13 +626,6 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
             }
 
             var argumentType = parameter.Type!.Description;
-
-            if (argumentType.Kind == "Pointer")
-            {
-                requiresUnsafe = true;
-            }
-
-            string finalArgumentType;
 
             if (argumentType.Kind == "Array")
             {
@@ -698,15 +648,12 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
                     var delegateName = functionName + argumentName + "Delegate";
                     var cSharpDelegate = UnwrapFunctionTypeDescriptionToDelegate(innerType, delegateName);
 
-                    // delegates are always used as pointers
-                    finalArgumentType = $"{delegateName}*";
                     cSharpDelegates.Add(cSharpDelegate);
 
                     cSharpFunction.Arguments.Add(new CSharpArgument(argumentName, delegateName));
                 }
                 else
                 {
-                    finalArgumentType = "unknown_delegate";
                     Console.WriteLine($"Unknown Type argument {argumentType.Name}");
                 }
             }
@@ -747,24 +694,6 @@ bool IsKnownCSharpKeyword(string name)
     }
 
     return false;
-}
-
-string ConvertAttachedToSummary(string comment, string prefix = "")
-{
-    if (comment == "")
-    {
-        return "";
-    }
-
-    var modified = comment.StartsWith("// ")
-        ? comment[3..]
-        : comment.StartsWith("//")
-            ? comment[2..]
-            : comment;
-    var escaped = new System.Xml.Linq.XText(modified).ToString();
-    return $"{prefix}/// <summary>\n" +
-           $"{prefix}/// {escaped}\n" +
-           $"{prefix}/// </summary>";
 }
 
 string[] TrimPreceding(string[] lines)
