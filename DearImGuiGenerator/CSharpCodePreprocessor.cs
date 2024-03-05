@@ -216,6 +216,7 @@ public class CSharpCodePreprocessor
 
         foreach (var sDelegate in _delegates)
         {
+            sDelegate.Attributes.Add("UnmanagedFunctionPointer(CallingConvention.Cdecl)");
             sDelegate.Modifiers.Add("public");
             if (sDelegate.ReturnType.EndsWith('*') || sDelegate.Arguments.Any(x => x.Type.EndsWith('*')))
             {
@@ -234,7 +235,7 @@ public class CSharpCodePreprocessor
             var returnTypeRedefinedType = RecursiveTryGetTypeReassignment(sFunc.ReturnType);
             if (returnTypeRedefinedType is not null && returnTypeRedefinedType != sFunc.ReturnType)
             {
-                sFunc.PrecedingComment ??= [..sFunc.PrecedingComment ?? [], $"ReturnType original type: {sFunc.ReturnType}"];
+                sFunc.PrecedingComment = [..sFunc.PrecedingComment ?? [], $"ReturnType original type: {sFunc.ReturnType}"];
                 sFunc.ReturnType = returnTypeRedefinedType;
             }
             
@@ -250,7 +251,7 @@ public class CSharpCodePreprocessor
                 var redefinedType = RecursiveTryGetTypeReassignment(sArg.Type);
                 if (redefinedType is not null && redefinedType != sArg.Type)
                 {
-                    sFunc.PrecedingComment ??= [..sFunc.PrecedingComment ?? [], $"Param {sArg.Name} original type: {sArg.Type}"];
+                    sFunc.PrecedingComment = [..sFunc.PrecedingComment ?? [], $"Param {sArg.Name} original type: {sArg.Type}"];
                     sArg.Type = redefinedType;
                 }
 

@@ -536,7 +536,7 @@ CSharpDelegate UnwrapFunctionTypeDescriptionToDelegate(TypeDescription descripti
 
         var cSharpType = GetCSharpTypeOfDescription(argumentType!);
         
-        cSharpDelegate.Arguments.Add(new CSharpTypedVariable(argumentName, cSharpType));
+        cSharpDelegate.Arguments.Add(new CSharpArgument(argumentName, cSharpType));
     }
 
     return cSharpDelegate;
@@ -679,9 +679,9 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
 
             if (argumentType.Kind == "Array")
             {
-                var cSharpType = GetCSharpTypeOfDescription(argumentType.InnerType);
+                var cSharpType = GetCSharpTypeOfDescription(argumentType.InnerType!);
 
-                var cSharpArgument = new CSharpTypedVariable(argumentName, cSharpType);
+                var cSharpArgument = new CSharpArgument(argumentName, cSharpType);
                 cSharpFunction.Arguments.Add(cSharpArgument);
             }
             else if (argumentType.Kind == "Type")
@@ -702,7 +702,7 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
                     finalArgumentType = $"{delegateName}*";
                     cSharpDelegates.Add(cSharpDelegate);
 
-                    cSharpFunction.Arguments.Add(new CSharpTypedVariable(argumentName, delegateName));
+                    cSharpFunction.Arguments.Add(new CSharpArgument(argumentName, delegateName));
                 }
                 else
                 {
@@ -714,7 +714,7 @@ List<CSharpStruct> WriteStructs(List<StructItem> structs)
             {
                 var cSharpType = GetCSharpTypeOfDescription(argumentType);
 
-                cSharpFunction.Arguments.Add(new CSharpTypedVariable(argumentName, cSharpType));
+                cSharpFunction.Arguments.Add(new CSharpArgument(argumentName, cSharpType));
             }
         }
         

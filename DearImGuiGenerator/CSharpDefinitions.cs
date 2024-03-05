@@ -69,7 +69,7 @@ public record CSharpClass(string Name) : CSharpContainerType(Name, CSharpDefinit
 
 public record CSharpFunction(string Name, string ReturnType) : CSharpDefinition(Name, CSharpDefinitionKind.Function)
 {
-    public List<CSharpTypedVariable> Arguments { get; private set; } = [];
+    public List<CSharpArgument> Arguments { get; private set; } = [];
 
     public string ReturnType { get; set; } = ReturnType;
     
@@ -81,7 +81,7 @@ public record CSharpFunction(string Name, string ReturnType) : CSharpDefinition(
 
 public record CSharpDelegate(string Name, string ReturnType) : CSharpDefinition(Name, CSharpDefinitionKind.Delegate)
 {
-    public List<CSharpTypedVariable> Arguments { get; private set; } = [];
+    public List<CSharpArgument> Arguments { get; private set; } = [];
     
     public override string ToString()
     {
@@ -90,6 +90,19 @@ public record CSharpDelegate(string Name, string ReturnType) : CSharpDefinition(
 }
 
 public record CSharpTypedVariable(string Name, string Type, bool IsArray = false, string ArrayBound = "") : CSharpDefinition(Name, CSharpDefinitionKind.Variable)
+{
+    public string Type { get; set; } = Type;
+    public bool IsArray { get; set; } = IsArray;
+
+    public string ArrayBound { get; set; } = ArrayBound;
+    
+    public override string ToString()
+    {
+        return $"{Type} {Name}{(IsArray ? $"[{ArrayBound}]" : "")}";
+    }
+}
+
+public record CSharpArgument(string Name, string Type, bool IsArray = false, string ArrayBound = "") : CSharpDefinition(Name, CSharpDefinitionKind.Variable)
 {
     public string Type { get; set; } = Type;
     public bool IsArray { get; set; } = IsArray;

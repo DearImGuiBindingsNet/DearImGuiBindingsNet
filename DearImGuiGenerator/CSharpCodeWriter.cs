@@ -6,7 +6,7 @@ public class CSharpCodeWriter
 
     private string _currentIndent = "";
 
-    const string genNamespace = "ImGui";
+    const string genNamespace = "ImGuiNative";
     const string constantsClass = "ImGuiConsts";
     const string functionsClass = "ImGuiNative";
     const string outDir = "../DearImGuiBindings/generated";
@@ -228,6 +228,8 @@ public class CSharpCodeWriter
 
         _writer = new StreamWriter(Path.Combine(outDir, "ImGui.Delegates.cs"));
 
+        WriteLine("using System.Runtime.InteropServices;");
+        WriteLine("");
         WriteLine($"namespace {genNamespace};");
         WriteLine("");
 
@@ -235,6 +237,7 @@ public class CSharpCodeWriter
         {
             WriteSummaries(cSharpDelegate);
 
+            WriteLines(cSharpDelegate.Attributes.Select(x => $"[{x}]"));
             WriteLine($"{JoinModifiers(cSharpDelegate)}delegate {cSharpDelegate.ReturnType} {cSharpDelegate.Name}({JoinArguments(cSharpDelegate)});");
 
             WriteLine("");
@@ -280,18 +283,18 @@ public class CSharpCodeWriter
         _writer.Dispose();
 
         _writer = new StreamWriter(Path.Combine(outDir, "ImGui.Functions.cs"));
-        
+
         WriteLine("using System.Runtime.InteropServices;");
         WriteLine("");
 
         WriteLine($"namespace {genNamespace};");
         WriteLine($"using static {constantsClass};");
         WriteLine("");
-        
+
         WriteLine($"public static class {functionsClass}");
-        
+
         PushBlock();
-        
+
         foreach (var func in functions)
         {
             WriteSummaries(func);
@@ -300,7 +303,7 @@ public class CSharpCodeWriter
             WriteLine($"{JoinModifiers(func)}{func.ReturnType} {func.Name}({JoinArguments(func)});");
             WriteLine("");
         }
-        
+
         PopBlock();
     }
 }

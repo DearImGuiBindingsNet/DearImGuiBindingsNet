@@ -1,5 +1,5 @@
-﻿using ImGui;
-using static ImGui.ImGuiNative;
+﻿using ImGuiNative;
+using static ImGuiNative.ImGuiNative;
 
 unsafe
 {
